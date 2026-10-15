@@ -855,6 +855,37 @@
   }
 
 
+
+  /* ================= SWYN: estilo limpio tipo Uniswap ================= */
+  img[data-ic], .icimg{display:none !important;}
+  .ico{width:24px; height:24px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; display:block;}
+  header{background:rgba(255,255,255,.96); border-bottom:1px solid var(--border);}
+  .brand .name{font-size:18px; font-weight:800; color:var(--text); letter-spacing:.4px;}
+  .brand .mark{width:34px; height:34px;}
+  .user-chip{background:#eaf0ff; border:none; color:var(--buzz); font-weight:700;}
+  .balance-card{background:none; border:none; border-radius:0; padding:6px 2px 2px; margin-bottom:18px; overflow:visible;}
+  .balance-card .label{font-size:13px; color:var(--text-faint); font-weight:600; margin-bottom:2px;}
+  .balance-card .amount{font-size:46px; font-weight:700; letter-spacing:-1px; color:var(--text); line-height:1.1;}
+  .balance-card .usd{font-size:13px; color:var(--text-faint); margin-top:6px;}
+  .quick-actions{gap:10px; margin-bottom:22px;}
+  .qa-btn-plain{
+    background:#eaf0ff; border-radius:18px; padding:14px 14px 12px; min-height:92px;
+    align-items:flex-start; justify-content:space-between; gap:0; color:var(--buzz);
+  }
+  .qa-btn-plain .qa-lbl{font-size:15px; font-weight:700; color:var(--buzz); letter-spacing:0;}
+  .card.flat{background:none; border:none; padding:0; margin-bottom:90px;}
+  .sec-h{font-size:19px; font-weight:700; color:var(--text);}
+  .token-row{padding:14px 2px; border-bottom:none; gap:14px;}
+  .token-row .tk-icon{width:42px; height:42px; border:none; background:var(--panel-2);}
+  .token-row .tk-name{font-size:16px; font-weight:600; color:var(--text);}
+  .token-row .tk-sub{font-size:13.5px; color:var(--text-faint); margin-top:2px;}
+  .token-row .tk-bal{font-size:16px; font-weight:600; color:var(--text);}
+  nav.tabbar{border-top:1px solid var(--border); padding:10px 8px calc(10px + env(safe-area-inset-bottom));}
+  .tab-btn-plain{opacity:1; color:var(--text-faint); gap:4px;}
+  .tab-btn-plain .ico{width:25px; height:25px;}
+  .tab-btn-plain .tab-lbl{font-size:10.5px; text-transform:none; font-weight:600; letter-spacing:0; color:inherit;}
+  .tab-btn-plain.active{color:var(--buzz);}
+  .tab-btn-plain.active .tab-lbl{color:var(--buzz);}
   .fuera{display:none !important;}
   #welcome .w-logo{width:min(72%,300px);height:auto;display:block;margin-bottom:6px;}
   #welcome .welcome-wrap{position:static; transform:none; width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:0 28px;}
@@ -893,10 +924,9 @@
     <!-- -------- INICIO -------- -->
     <section class="screen active" id="screen-inicio">
       <div class="balance-card">
-        <img class="bc-deco" data-ic="monedas" alt="">
         <div class="bc-top">
           <div class="label">Balance total estimado</div>
-          <span class="eye">👁</span>
+          
         </div>
         <div class="amount" id="totalUsd">$0.00</div>
         <div class="usd" id="walletAddrShort">—</div>
@@ -917,9 +947,9 @@
       </div>
 
       <div class="quick-actions">
-        <button class="qa-btn-plain" onclick="goTab('swap')"><img data-ic="swap" alt="Swap"><span class="qa-lbl">Swap</span></button>
-        <button class="qa-btn-plain fuera" onclick="openModal('sendModal')"><img data-ic="enviar" alt="Enviar"><span class="qa-lbl">Enviar</span></button>
-        <button class="qa-btn-plain" onclick="openModal('receiveModal')"><img data-ic="recibir" alt="Recibir"><span class="qa-lbl">Recibir</span></button>
+        <button class="qa-btn-plain" onclick="goTab('swap')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4L3 8l4 4M3 8h15M17 20l4-4-4-4M21 16H6"/></svg><span class="qa-lbl">Swap</span></button>
+        <button class="qa-btn-plain fuera" onclick="openModal('sendModal')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg><span class="qa-lbl">Enviar</span></button>
+        <button class="qa-btn-plain" onclick="openModal('receiveModal')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v13M6 12l6 6 6-6"/></svg><span class="qa-lbl">Recibir</span></button>
       </div>
 
       <div class="launch-row fuera">
@@ -935,9 +965,9 @@
         <span class="emoji">🐝</span><span>Visitá BuzzFarm</span>
       </button>
 
-      <div class="card">
+      <div class="card flat">
         <div class="card-title" style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-          <span style="display:flex; align-items:center;"><img class="icimg" data-ic="tokens" alt="">Tus tokens</span>
+          <span class="sec-h">Tokens</span>
           <span style="display:flex; gap:8px;">
             <button class="mini-add" id="btnRefrescar" onclick="refrescarTodo()" title="Actualizar">↻</button>
             <button class="mini-add fuera" onclick="abrirAgregarToken()">+ Agregar</button>
@@ -1414,11 +1444,11 @@
   </main>
 
   <nav class="tabbar">
-    <button class="tab-btn-plain active" data-tab="inicio" onclick="goTab('inicio')"><img data-ic="inicio" alt="Inicio"><span class="tab-lbl">Inicio</span></button>
-    <button class="tab-btn-plain" data-tab="swap" onclick="goTab('swap')"><img data-ic="swap" alt="Swap"><span class="tab-lbl">Swap</span></button>
-    <button class="tab-btn-plain" data-tab="tendencias" onclick="goTab('tendencias')"><img data-ic="tendencias" alt="Tendencias"><span class="tab-lbl">Tendencias</span></button>
+    <button class="tab-btn-plain active" data-tab="inicio" onclick="goTab('inicio')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span class="tab-lbl">Inicio</span></button>
+    <button class="tab-btn-plain" data-tab="swap" onclick="goTab('swap')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4L3 8l4 4M3 8h15M17 20l4-4-4-4M21 16H6"/></svg><span class="tab-lbl">Swap</span></button>
+    <button class="tab-btn-plain" data-tab="tendencias" onclick="goTab('tendencias')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></svg><span class="tab-lbl">Tendencias</span></button>
     <button class="tab-btn-plain fuera" data-tab="lanzados" onclick="goTab('lanzados')"><img data-ic="launchpad" alt="Launchpad"><span class="tab-lbl">Launchpad</span></button>
-    <button class="tab-btn-plain" data-tab="perfil" onclick="goTab('perfil')"><img data-ic="perfil" alt="Perfil"><span class="tab-lbl">Perfil</span></button>
+    <button class="tab-btn-plain" data-tab="perfil" onclick="goTab('perfil')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg><span class="tab-lbl">Perfil</span></button>
   </nav>
 </div>
 
@@ -1527,9 +1557,9 @@
       <button class="btn secondary" id="fdOcultar">🙈 Ocultar de mi wallet</button>
     </div>
     <div class="quick-actions">
-      <button class="qa-btn-plain" id="detailSwapInBtn"><img data-ic="monedas" alt="Comprar"><span class="qa-lbl">Comprar</span></button>
-      <button class="qa-btn-plain" id="detailSwapOutBtn"><img data-ic="billetera" alt="Vender"><span class="qa-lbl">Vender</span></button>
-      <button class="qa-btn-plain" id="detailSendBtn"><img data-ic="enviar" alt="Enviar"><span class="qa-lbl">Enviar</span></button>
+      <button class="qa-btn-plain" id="detailSwapInBtn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="qa-lbl">Comprar</span></button>
+      <button class="qa-btn-plain" id="detailSwapOutBtn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg><span class="qa-lbl">Vender</span></button>
+      <button class="qa-btn-plain" id="detailSendBtn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg><span class="qa-lbl">Enviar</span></button>
     </div>
   </div>
 </div>
@@ -2538,11 +2568,10 @@
           <div class="tk-icon">${iconHtml}</div>
           <div class="tk-info">
             <div class="tk-name">${r.name}</div>
-            <div class="tk-sub">${r.symbol}</div>
+            <div class="tk-sub">${trimNum(formatted)} ${r.symbol}</div>
           </div>
           <div class="tk-amt">
-            <div class="tk-bal">${trimNum(formatted)}</div>
-            ${r.usdValue !== null ? `<div class="tk-usd">$${r.usdValue.toLocaleString('es',{maximumFractionDigits:2})}</div>` : ''}
+            <div class="tk-bal">${r.usdValue !== null ? '$' + r.usdValue.toLocaleString('es',{maximumFractionDigits:2}) : '—'}</div>
           </div>`;
         if(tokensOcultos().includes(r.address.toLowerCase())) return;   // el usuario lo escondió
         const tkForDetail = { ...tk, icon: r.icon || geckoUrl || tk.icon, balance: formatted, usdValue: r.usdValue };
