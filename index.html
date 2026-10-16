@@ -1514,8 +1514,18 @@
     <div class="modal-handle"></div>
     <div class="modal-title" id="ganarModalTitulo">Guardar</div>
     <div class="field-label" id="ganarModalDisp">Disponible: —</div>
-    <input class="field" id="ganarMonto" type="text" inputmode="decimal" placeholder="0.0" autocomplete="off">
-    <button class="btn ghost" style="margin-top:10px;" onclick="ganarMax()">Máximo</button>
+    <input class="field" id="ganarMonto" type="text" inputmode="decimal" placeholder="0.0" autocomplete="off" oninput="ganarCalc()">
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <button class="btn ghost" style="flex:1;" onclick="ganarPct(25)">25%</button>
+      <button class="btn ghost" style="flex:1;" onclick="ganarPct(50)">50%</button>
+      <button class="btn ghost" style="flex:1;" onclick="ganarPct(100)">Máx.</button>
+    </div>
+    <div class="card" id="ganarEst" style="margin-top:12px;">
+      <div style="font-size:14px; font-weight:700; margin-bottom:6px;">Ganancias estimadas</div>
+      <div style="display:flex; justify-content:space-between; font-size:14px; color:var(--text-dim);"><span>Al mes</span><span id="ganarEstMes">—</span></div>
+      <div style="display:flex; justify-content:space-between; font-size:14px; color:var(--text-dim); margin-top:4px;"><span>Al año</span><span id="ganarEstAnio">—</span></div>
+      <div style="font-size:12px; color:var(--text-faint); margin-top:8px; line-height:1.4;">Estimación con el rendimiento actual; cambia con el tiempo y no está garantizada. Comisión de SWYN: 0%. Con tecnología de Morpho.</div>
+    </div>
     <div id="ganarModalMsg" style="font-size:13px; color:var(--text-dim); margin:12px 0; min-height:18px;"></div>
     <button class="btn" id="ganarModalBtn" onclick="ganarConfirmar()">Confirmar</button>
   </div>
@@ -2389,7 +2399,7 @@
       // si tenés saldo > 0, aparece. No depende del explorador ni de heurísticas de liquidez.
       // a la lista curada se suman los tokens del launchpad: si tenés saldo,
       // tienen que verse en Inicio como cualquier otro
-      const delLaunchpad = await direccionesLanzadas();
+      const delLaunchpad = [];   // SWYN lite: no se muestran tokens del Launchpad
       const delContrato  = await direccionesAgregadas();
       // ORDEN A PROPÓSITO: primero WLD, después los tokens que agregó la
       // gente y los del launchpad, y al final la lista curada. Antes los
@@ -2572,6 +2582,18 @@
         }));
       }
       priced.forEach(r => { if(setLaunchpad.has(r.address)) r.esLanzado = true; });
+
+      // los que DexScreener no pudo valuar se calculan desde sus pools reales
+      // (de a pocos, para no saturar el RPC)
+      const sinPrecio2 = priced.filter(r => r.usdValue === null);
+      for(let i = 0; i < sinPrecio2.length; i += 4){
+        await Promise.all(sinPrecio2.slice(i, i + 4).map(async (r) => {
+          const pu = await precioOnchainUsd(r.address, Number(r.decimals));
+          if(pu != null && isFinite(pu) && pu > 0){
+            r.usdValue = parseFloat(ethers.formatUnits(r.bal, r.decimals)) * pu;
+          }
+        }));
+      }
 
       listEl.innerHTML = '';
       let totalUsd = 0;
@@ -5139,6 +5161,69 @@
   }
 
   // Precio en USD de un token que todavía vive en su curva
+
+  // ------------------------------------------------------------
+  //  Precio de respaldo: cuando DexScreener no tiene el token, se calcula
+  //  desde los pools REALES contra WLD (Uniswap V2/V3 y World Swap) y se
+  //  convierte a dólares con el precio de WLD. Solo cuenta un pool si tiene
+  //  al menos 5 WLD adentro, para no tomar el precio de un pool vacío.
+  // ------------------------------------------------------------
+  const precioOnchainCache = {};
+  const PRECIO_V2_ABI  = ['function factory() view returns (address)', 'function getAmountsOut(uint256,address[]) view returns (uint256[])'];
+  const PRECIO_PAIR_ABI = ['function getPair(address,address) view returns (address)'];
+  const PRECIO_V3F_ABI = ['function getPool(address,address,uint24) view returns (address)'];
+  const PRECIO_V3P_ABI = ['function slot0() view returns (uint160 sqrtPriceX96,int24 tick,uint16,uint16,uint16,uint8,bool)', 'function token0() view returns (address)'];
+  const PRECIO_MIN_WLD = 5n * 10n ** 18n;
+
+  async function precioOnchainUsd(addr, dec){
+    const key = addr.toLowerCase();
+    const c = precioOnchainCache[key];
+    if(c && Date.now() - c.at < 300000) return c.v;
+    let res = null;
+    try{
+      const wldUsd = await precioWldUsd();
+      if(wldUsd == null) return null;
+      const prov = await getReadProvider();
+      const wld = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, prov);
+      const ZERO = /^0x0{40}$/i;
+      let mejor = null;   // { enWld, profundidad }
+
+      // V2: Puf y World Swap
+      for(const rt of [V2_ROUTER_REAL, WORLDSWAP_ROUTER]){
+        try{
+          const router = new ethers.Contract(rt, PRECIO_V2_ABI, prov);
+          const fac = await router.factory();
+          const par = await new ethers.Contract(fac, PRECIO_PAIR_ABI, prov).getPair(addr, WLD_ADDRESS);
+          if(ZERO.test(par)) continue;
+          const prof = await wld.balanceOf(par);
+          if(prof < PRECIO_MIN_WLD) continue;
+          const out = await router.getAmountsOut(10n ** BigInt(dec), [addr, WLD_ADDRESS]);
+          const enWld = Number(ethers.formatUnits(out[1], 18));
+          if(enWld > 0 && (!mejor || prof > mejor.prof)) mejor = { enWld, prof };
+        }catch(e){}
+      }
+      // V3: el pool directo con más WLD
+      const f3 = new ethers.Contract(UNISWAP_V3_FACTORY, PRECIO_V3F_ABI, prov);
+      for(const fee of [100, 500, 3000, 10000]){
+        try{
+          const pool = await f3.getPool(addr, WLD_ADDRESS, fee);
+          if(ZERO.test(pool)) continue;
+          const prof = await wld.balanceOf(pool);
+          if(prof < PRECIO_MIN_WLD) continue;
+          const pc = new ethers.Contract(pool, PRECIO_V3P_ABI, prov);
+          const [s0, t0] = await Promise.all([ pc.slot0(), pc.token0() ]);
+          const raw = Math.pow(Number(s0.sqrtPriceX96) / Math.pow(2, 96), 2);   // token1 por token0 (crudo)
+          const tokEsT0 = t0.toLowerCase() === key;
+          const enWld = (tokEsT0 ? raw : 1 / raw) * Math.pow(10, dec) / 1e18;
+          if(isFinite(enWld) && enWld > 0 && (!mejor || prof > mejor.prof)) mejor = { enWld, prof };
+        }catch(e){}
+      }
+      if(mejor) res = mejor.enWld * wldUsd;
+    }catch(e){ res = null; }
+    precioOnchainCache[key] = { v: res, at: Date.now() };
+    return res;
+  }
+
   async function precioLanzadoUsd(tokenAddr){
     try{
       const p = await getReadProvider();
@@ -8751,7 +8836,7 @@
       +   '<div style="font-size:17px; font-weight:700;">' + v.nombre + '</div>'
       +   '<div style="font-size:13px; color:var(--buzz); font-weight:700;">' + apy + '</div>'
       + '</div>'
-      + '<div style="font-size:13px; color:var(--text-faint); margin:4px 0 12px;">Token: ' + v.simbolo + ' · Curador: Re7 Labs</div>'
+      + '<div style="font-size:13px; color:var(--text-faint); margin:4px 0 12px;">Token: ' + v.simbolo + ' · Curador: Re7 Labs<br>Rendimiento base para todos. Quienes estén verificados con World ID pueden recibir un bono extra de Morpho (no incluido aquí).</div>'
       + '<div style="font-size:13px; color:var(--text-dim);">Tu depósito</div>'
       + '<div style="font-size:22px; font-weight:700; margin-bottom:12px;">' + (cargando ? 'Cargando…' : (err ? 'No se pudo leer' : pos)) + '</div>'
       + '<div style="display:flex; gap:10px;">'
@@ -8768,11 +8853,35 @@
     ganarAccion = { modo, v };
     document.getElementById('ganarModalTitulo').textContent = (modo === 'guardar' ? 'Guardar ' : 'Retirar ') + v.simbolo;
     const base = modo === 'guardar' ? st.saldo : st.posicion;
-    document.getElementById('ganarModalDisp').textContent = (modo === 'guardar' ? 'Disponible en tu wallet: ' : 'Tu depósito: ') + ganarFmt(base, v.dec) + ' ' + v.simbolo;
+    document.getElementById('ganarModalDisp').textContent = (modo === 'guardar' ? 'Disponible en tu wallet: ' : 'Tu depósito: ') + ganarFmt(base, v.dec) + ' ' + v.simbolo + (modo === 'guardar' ? ' · En Ganar: ' + ganarFmt(st.posicion, v.dec) + ' ' + v.simbolo : '');
     document.getElementById('ganarMonto').value = '';
     document.getElementById('ganarModalMsg').textContent = '';
     document.getElementById('ganarModalBtn').textContent = modo === 'guardar' ? 'Guardar' : 'Retirar';
     openModal('ganarModal');
+    ganarCalc();
+  }
+
+  function ganarPct(pct){
+    if(!ganarAccion) return;
+    const { modo, v } = ganarAccion, st = ganarEstado[v.id];
+    const base = modo === 'guardar' ? st.saldo : st.posicion;
+    const val = pct >= 100 ? base : (base * BigInt(pct)) / 100n;
+    document.getElementById('ganarMonto').value = ethers.formatUnits(val, v.dec);
+    ganarCalc();
+  }
+
+  function ganarCalc(){
+    if(!ganarAccion) return;
+    const { modo, v } = ganarAccion, st = ganarEstado[v.id];
+    const caja = document.getElementById('ganarEst');
+    caja.style.display = modo === 'guardar' ? 'block' : 'none';
+    const mes = document.getElementById('ganarEstMes'), anio = document.getElementById('ganarEstAnio');
+    let n = NaN;
+    try{ n = Number(ethers.formatUnits(ethers.parseUnits(document.getElementById('ganarMonto').value.trim().replace(',', '.'), v.dec), v.dec)); }catch(e){}
+    if(!(n > 0) || !st || typeof st.apy !== 'number'){ mes.textContent = '—'; anio.textContent = '—'; return; }
+    const y = n * st.apy / 100, d = v.dec === 6 ? 2 : 4;
+    const f = x => x.toLocaleString('es', { maximumFractionDigits: d }) + ' ' + v.simbolo;
+    anio.textContent = f(y); mes.textContent = f(y / 12);
   }
 
   function ganarMax(){
