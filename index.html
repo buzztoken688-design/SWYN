@@ -1309,6 +1309,27 @@
       </div>
     </section>
 
+    <section class="screen" id="screen-ganar">
+      <div class="section-title">Ganar</div>
+      <div class="card" style="margin-bottom:14px;">
+        <div style="font-size:13px; color:var(--text-dim); line-height:1.5;">
+          Guarda tus tokens en vaults de <b>Morpho</b>, un protocolo de préstamos en World Chain. Tus fondos quedan en <b>tu propia wallet</b> (SWYN no los custodia) y puedes retirarlos cuando quieras. El rendimiento es <b>variable y no está garantizado</b>; parte puede venir de recompensas temporales. Existe riesgo en los contratos de Morpho y del curador del vault.
+        </div>
+      </div>
+      <div class="sec-h" style="margin:6px 0 10px;">Guardar</div>
+      <div id="ganarList"><div class="empty-state">Cargando…</div></div>
+
+      <div class="sec-h" style="margin:26px 0 10px;">Liquidez</div>
+      <div class="card" style="margin-bottom:14px;">
+        <div style="font-size:13px; color:var(--text-dim); line-height:1.5;">
+          Aporta tokens a <b>pools de Uniswap</b> ya existentes en World Chain y gana una parte de las <b>comisiones de cada swap</b>. Solo se muestran pools verificados. Tu posición es un NFT que queda en <b>tu wallet</b>. Riesgos: si los precios de los dos tokens se mueven distinto puedes quedar con menos valor que si los hubieras guardado (<b>pérdida impermanente</b>), y las ganancias dependen del volumen del pool: <b>no están garantizadas</b>.
+        </div>
+      </div>
+      <div id="liqPools"><div class="empty-state">Cargando…</div></div>
+      <div class="sec-h" style="margin:22px 0 10px;">Tus posiciones</div>
+      <div id="liqPos"><div class="empty-state">—</div></div>
+    </section>
+
     <!-- -------- PERFIL -------- -->
     <section class="screen" id="screen-perfil">
       <div class="section-title">Perfil</div>
@@ -1447,7 +1468,8 @@
     <button class="tab-btn-plain active" data-tab="inicio" onclick="goTab('inicio')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span class="tab-lbl">Inicio</span></button>
     <button class="tab-btn-plain" data-tab="swap" onclick="goTab('swap')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4L3 8l4 4M3 8h15M17 20l4-4-4-4M21 16H6"/></svg><span class="tab-lbl">Swap</span></button>
     <button class="tab-btn-plain" data-tab="tendencias" onclick="goTab('tendencias')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></svg><span class="tab-lbl">Tendencias</span></button>
-    <button class="tab-btn-plain fuera" data-tab="lanzados" onclick="goTab('lanzados')"><img data-ic="launchpad" alt="Launchpad"><span class="tab-lbl">Launchpad</span></button>
+    <button class="tab-btn-plain" data-tab="ganar" onclick="goTab('ganar')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M16.5 7.5H10a2.8 2.8 0 0 0 0 5.6h4a2.8 2.8 0 0 1 0 5.6H7"/></svg><span class="tab-lbl">Ganar</span></button>
+     <button class="tab-btn-plain fuera" data-tab="lanzados" onclick="goTab('lanzados')"><img data-ic="launchpad" alt="Launchpad"><span class="tab-lbl">Launchpad</span></button>
     <button class="tab-btn-plain" data-tab="perfil" onclick="goTab('perfil')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg><span class="tab-lbl">Perfil</span></button>
   </nav>
 </div>
@@ -1483,6 +1505,40 @@
       <div style="font-size:13px; word-break:break-all; margin-bottom:14px;" id="receiveAddr">—</div>
       <button class="btn secondary" onclick="copyAddr()">Copiar dirección</button>
     </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="ganarModal">
+  <div class="modal" style="position:relative;">
+    <div class="close-x" onclick="closeModal('ganarModal')">✕</div>
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="ganarModalTitulo">Guardar</div>
+    <div class="field-label" id="ganarModalDisp">Disponible: —</div>
+    <input class="field" id="ganarMonto" type="text" inputmode="decimal" placeholder="0.0" autocomplete="off">
+    <button class="btn ghost" style="margin-top:10px;" onclick="ganarMax()">Máximo</button>
+    <div id="ganarModalMsg" style="font-size:13px; color:var(--text-dim); margin:12px 0; min-height:18px;"></div>
+    <button class="btn" id="ganarModalBtn" onclick="ganarConfirmar()">Confirmar</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="liqModal">
+  <div class="modal" style="position:relative;">
+    <div class="close-x" onclick="closeModal('liqModal')">✕</div>
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="liqTitulo">Agregar liquidez</div>
+    <div class="field-label" id="liqLblA">Cantidad</div>
+    <input class="field" id="liqMontoA" type="text" inputmode="decimal" placeholder="0.0" autocomplete="off" oninput="liqCalc()">
+    <button class="btn ghost" style="margin-top:10px;" onclick="liqMaxA()">Máximo</button>
+    <div class="card" style="margin-top:12px;">
+      <div style="font-size:13px; color:var(--text-dim);">También necesitas</div>
+      <div style="font-size:18px; font-weight:700;" id="liqNecesitas">—</div>
+      <div style="font-size:12px; color:var(--text-faint); margin-top:6px;" id="liqTienes">—</div>
+    </div>
+    <div style="font-size:12px; color:var(--text-faint); line-height:1.5; margin:12px 0;">
+      Rango completo: tu liquidez trabaja a cualquier precio. Puedes cobrar tus comisiones y retirar cuando quieras. Puede haber pérdida impermanente.
+    </div>
+    <div id="liqMsg" style="font-size:13px; color:var(--text-dim); margin:6px 0; min-height:18px;"></div>
+    <button class="btn" id="liqBtn" onclick="liqConfirmar()">Agregar liquidez</button>
   </div>
 </div>
 
@@ -1894,6 +1950,7 @@
     if(name === 'tendencias' || name === 'swap') loadTrending();
     if(name === 'tendencias'){ renderLpStrip(); cargarLanzados(); }
     if(name === 'perfil'){ cargarPerfil(); vigilarSecciones(); }
+    if(name === 'ganar'){ cargarGanar(); cargarLiquidez(); }
     if(name === 'crear') initCrear();
     if(name === 'anunciar') initAnunciar();
     if(name === 'lanzados'){
@@ -8617,6 +8674,428 @@
   };
 
   document.getElementById('btnConnect').onclick = connectWallet;
+
+
+  // ============================================================
+  //  GANAR — vaults de Morpho (ERC-4626), solo puente
+  //  El depósito va directo del usuario al vault y la posición queda
+  //  a nombre del usuario. SWYN no custodia nada ni cobra comisión.
+  // ============================================================
+  const GANAR_VAULTS = [
+    { id:'wld',  nombre:'Re7 WLD',  simbolo:'WLD',  dec:18, token:'0x2cFc85d8E48F8EAB294be644d9E25C3030863003', vault:'0x348831b46876d3dF2Db98BdEc5E3B4083329Ab9f' },
+    { id:'usdc', nombre:'Re7 USDC', simbolo:'USDC', dec:6,  token:'0x79A02482A880bCE3F13e09Da970dC34db4CD24d1', vault:'0xb1E80387EbE53Ff75a89736097D34dC8D9E9045B' }
+  ];
+  const VAULT_ABI = [
+    'function balanceOf(address) view returns (uint256)',
+    'function convertToAssets(uint256) view returns (uint256)',
+    'function maxRedeem(address) view returns (uint256)',
+    'function deposit(uint256 assets, address receiver) returns (uint256)',
+    'function withdraw(uint256 assets, address receiver, address owner) returns (uint256)',
+    'function redeem(uint256 shares, address receiver, address owner) returns (uint256)'
+  ];
+  const ganarEstado = {};     // id -> { saldo, posicion, shares, apy }
+  let ganarAccion = null;     // { modo:'guardar'|'retirar', v }
+  let ganarEnviando = false;
+
+  function ganarFmt(raw, dec){
+    const n = Number(ethers.formatUnits(raw, dec));
+    return n.toLocaleString('es', { maximumFractionDigits: dec === 6 ? 2 : 4 });
+  }
+
+  async function ganarApy(v){
+    try{
+      const q = '{ vaultByAddress(address:"' + v.vault + '", chainId:480){ state{ netApy } } }';
+      const r = await Promise.race([
+        fetch('https://api.morpho.org/graphql', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ query:q }) }),
+        new Promise((_, rej)=>setTimeout(()=>rej(new Error('timeout')), 8000))
+      ]);
+      const j = await r.json();
+      const a = j && j.data && j.data.vaultByAddress && j.data.vaultByAddress.state && j.data.vaultByAddress.state.netApy;
+      return (typeof a === 'number') ? a * 100 : null;
+    }catch(e){ return null; }
+  }
+
+  async function cargarGanar(){
+    const cont = document.getElementById('ganarList');
+    if(!userAddress){ cont.innerHTML = '<div class="empty-state">Conecta tu wallet para ver tus vaults.</div>'; return; }
+    cont.innerHTML = GANAR_VAULTS.map(v => ganarTarjeta(v, null)).join('');
+    const prov = await getReadProvider();
+    await Promise.all(GANAR_VAULTS.map(async v => {
+      try{
+        const tk = new ethers.Contract(v.token, ERC20_ABI, prov);
+        const vt = new ethers.Contract(v.vault, VAULT_ABI, prov);
+        const [saldo, shares] = await Promise.all([ tk.balanceOf(userAddress), vt.balanceOf(userAddress) ]);
+        const posicion = shares > 0n ? await vt.convertToAssets(shares) : 0n;
+        ganarEstado[v.id] = { saldo, shares, posicion, apy: ganarEstado[v.id] ? ganarEstado[v.id].apy : null };
+      }catch(e){ ganarEstado[v.id] = { error:true }; }
+      document.getElementById('gv-' + v.id).outerHTML = ganarTarjeta(v, ganarEstado[v.id]);
+    }));
+    // el rendimiento llega aparte y no frena lo demás
+    GANAR_VAULTS.forEach(async v => {
+      const apy = await ganarApy(v);
+      if(ganarEstado[v.id]){ ganarEstado[v.id].apy = apy; }
+      const el = document.getElementById('gv-' + v.id);
+      if(el) el.outerHTML = ganarTarjeta(v, ganarEstado[v.id] || null);
+    });
+  }
+
+  function ganarTarjeta(v, st){
+    const cargando = !st;
+    const err = st && st.error;
+    const pos = (!cargando && !err) ? ganarFmt(st.posicion, v.dec) + ' ' + v.simbolo : '—';
+    const apy = (st && typeof st.apy === 'number') ? st.apy.toFixed(2) + '% APY' : 'APY: ver en Morpho';
+    const dis = (!cargando && !err) ? st.saldo === 0n : true;
+    const tiene = (!cargando && !err) ? st.posicion > 0n : false;
+    return '<div class="card" id="gv-' + v.id + '" style="margin-bottom:12px;">'
+      + '<div style="display:flex; justify-content:space-between; align-items:baseline;">'
+      +   '<div style="font-size:17px; font-weight:700;">' + v.nombre + '</div>'
+      +   '<div style="font-size:13px; color:var(--buzz); font-weight:700;">' + apy + '</div>'
+      + '</div>'
+      + '<div style="font-size:13px; color:var(--text-faint); margin:4px 0 12px;">Token: ' + v.simbolo + ' · Curador: Re7 Labs</div>'
+      + '<div style="font-size:13px; color:var(--text-dim);">Tu depósito</div>'
+      + '<div style="font-size:22px; font-weight:700; margin-bottom:12px;">' + (cargando ? 'Cargando…' : (err ? 'No se pudo leer' : pos)) + '</div>'
+      + '<div style="display:flex; gap:10px;">'
+      +   '<button class="btn" style="flex:1;" ' + (dis ? 'disabled' : '') + ' onclick="ganarAbrir(\'guardar\',\'' + v.id + '\')">Guardar</button>'
+      +   '<button class="btn secondary" style="flex:1;" ' + (tiene ? '' : 'disabled') + ' onclick="ganarAbrir(\'retirar\',\'' + v.id + '\')">Retirar</button>'
+      + '</div>'
+      + '<a href="https://worldscan.org/address/' + v.vault + '" target="_blank" style="display:block; margin-top:10px; font-size:12px; color:var(--text-faint);">Ver contrato en Worldscan</a>'
+      + '</div>';
+  }
+
+  function ganarAbrir(modo, id){
+    const v = GANAR_VAULTS.find(x => x.id === id), st = ganarEstado[id];
+    if(!v || !st || st.error) return;
+    ganarAccion = { modo, v };
+    document.getElementById('ganarModalTitulo').textContent = (modo === 'guardar' ? 'Guardar ' : 'Retirar ') + v.simbolo;
+    const base = modo === 'guardar' ? st.saldo : st.posicion;
+    document.getElementById('ganarModalDisp').textContent = (modo === 'guardar' ? 'Disponible en tu wallet: ' : 'Tu depósito: ') + ganarFmt(base, v.dec) + ' ' + v.simbolo;
+    document.getElementById('ganarMonto').value = '';
+    document.getElementById('ganarModalMsg').textContent = '';
+    document.getElementById('ganarModalBtn').textContent = modo === 'guardar' ? 'Guardar' : 'Retirar';
+    openModal('ganarModal');
+  }
+
+  function ganarMax(){
+    if(!ganarAccion) return;
+    const { modo, v } = ganarAccion, st = ganarEstado[v.id];
+    document.getElementById('ganarMonto').value = ethers.formatUnits(modo === 'guardar' ? st.saldo : st.posicion, v.dec);
+  }
+
+  async function ganarConfirmar(){
+    if(ganarEnviando || !ganarAccion) return;
+    const { modo, v } = ganarAccion, st = ganarEstado[v.id];
+    const msg = document.getElementById('ganarModalMsg');
+    let monto;
+    try{ monto = ethers.parseUnits(document.getElementById('ganarMonto').value.trim().replace(',', '.'), v.dec); }
+    catch(e){ msg.textContent = 'Escribe un monto válido.'; return; }
+    if(monto <= 0n){ msg.textContent = 'Escribe un monto mayor a 0.'; return; }
+    const tope = modo === 'guardar' ? st.saldo : st.posicion;
+    if(monto > tope){ msg.textContent = 'El monto es mayor a lo que tienes.'; return; }
+    const k = window._MiniKit || window.MiniKit;
+    if(!k || !(k.isInstalled && k.isInstalled())){ msg.textContent = 'Abre SWYN desde World App.'; return; }
+
+    ganarEnviando = true; msg.textContent = 'Confirma en World App…';
+    try{
+      const erc20 = new ethers.Interface(ERC20_ABI), vi = new ethers.Interface(VAULT_ABI);
+      let transactions;
+      if(modo === 'guardar'){
+        transactions = [
+          { to: v.token.toLowerCase(), data: erc20.encodeFunctionData('approve', [v.vault, monto]) },
+          { to: v.vault.toLowerCase(), data: vi.encodeFunctionData('deposit', [monto, userAddress]) }
+        ];
+      }else if(monto >= st.posicion){
+        // retiro total: se rescatan todas las participaciones, sin dejar restos
+        transactions = [ { to: v.vault.toLowerCase(), data: vi.encodeFunctionData('redeem', [st.shares, userAddress, userAddress]) } ];
+      }else{
+        transactions = [ { to: v.vault.toLowerCase(), data: vi.encodeFunctionData('withdraw', [monto, userAddress, userAddress]) } ];
+      }
+      const res = await k.sendTransaction({ chainId: CHAIN_ID, transactions });
+      const ok = (res && res.data && res.data.status === 'success') || (res && res.finalPayload && res.finalPayload.status !== 'error');
+      if(ok){
+        showToast(modo === 'guardar' ? 'Guardado en ' + v.nombre : 'Retiro enviado');
+        closeModal('ganarModal');
+        setTimeout(cargarGanar, 2500);
+      }else{
+        msg.textContent = 'No se completó. Intenta de nuevo con un monto menor.';
+      }
+    }catch(e){
+      msg.textContent = (e && e.message) ? e.message : 'Falló el envío';
+    }finally{ ganarEnviando = false; }
+  }
+
+
+  // ============================================================
+  //  LIQUIDEZ — pools verificados de Uniswap V3 (solo puente)
+  //  Lista cerrada: solo estos pools. Cada uno se comprueba contra la
+  //  factory oficial antes de mostrarse. La posición (NFT) queda en la
+  //  wallet del usuario. SWYN no custodia nada ni cobra comisión.
+  // ============================================================
+  const LIQ_FACTORY = '0x7a5028BDa40e7B173C278C5342087826455ea25a';
+  const LIQ_NPM     = '0xec12a9F9a09f50550686363766Cc153D03c27b5e';
+  const LIQ_TOK = {
+    WLD:  { a:'0x2cFc85d8E48F8EAB294be644d9E25C3030863003', dec:18 },
+    USDC: { a:'0x79A02482A880bCE3F13e09Da970dC34db4CD24d1', dec:6  },
+    WETH: { a:'0x4200000000000000000000000000000000000006', dec:18 },
+    WBTC: { a:'0x03C7054BCB39f7b2e5B2c7AcB37583e32D70Cfa3', dec:8  }
+  };
+  const LIQ_POOLS = [
+    { id:'wld-usdc-3000',  a:'WLD',  b:'USDC', fee:3000,  pool:'0xC19BC89ac024426F5A23c5bb8bc91D8017c90684' },
+    { id:'wld-usdc-10000', a:'WLD',  b:'USDC', fee:10000, pool:'0x610E319b3A3Ab56A0eD5562927D37c233774ba39' },
+    { id:'weth-usdc-500',  a:'WETH', b:'USDC', fee:500,   pool:'0x5f835420502A7702de50Cd0E78D8aA3608b2137e' },
+    { id:'wbtc-usdc-500',  a:'WBTC', b:'USDC', fee:500,   pool:'0xdCe053d9ba0Fa2c5f772416b64F191158Cbcc32E' },
+    { id:'wld-weth-3000',  a:'WLD',  b:'WETH', fee:3000,  pool:'0x494D68e3cAb640fa50F4c1B3E2499698D1a173A0' }
+  ];
+  const LIQ_SPACING = { 500:10, 3000:60, 10000:200 };
+  const LIQ_MAX128 = (1n << 128n) - 1n;
+  const LIQ_FACTORY_ABI = ['function getPool(address,address,uint24) view returns (address)'];
+  const LIQ_POOL_ABI = [
+    'function slot0() view returns (uint160 sqrtPriceX96,int24 tick,uint16 observationIndex,uint16 observationCardinality,uint16 observationCardinalityNext,uint8 feeProtocol,bool unlocked)',
+    'function liquidity() view returns (uint128)',
+    'function token0() view returns (address)',
+    'function token1() view returns (address)'
+  ];
+  const LIQ_NPM_ABI = [
+    'function mint((address token0,address token1,uint24 fee,int24 tickLower,int24 tickUpper,uint256 amount0Desired,uint256 amount1Desired,uint256 amount0Min,uint256 amount1Min,address recipient,uint256 deadline)) payable returns (uint256 tokenId,uint128 liquidity,uint256 amount0,uint256 amount1)',
+    'function positions(uint256) view returns (uint96 nonce,address operator,address token0,address token1,uint24 fee,int24 tickLower,int24 tickUpper,uint128 liquidity,uint256 feeGrowthInside0LastX128,uint256 feeGrowthInside1LastX128,uint128 tokensOwed0,uint128 tokensOwed1)',
+    'function balanceOf(address) view returns (uint256)',
+    'function tokenOfOwnerByIndex(address,uint256) view returns (uint256)',
+    'function collect((uint256 tokenId,address recipient,uint128 amount0Max,uint128 amount1Max)) payable returns (uint256 amount0,uint256 amount1)',
+    'function decreaseLiquidity((uint256 tokenId,uint128 liquidity,uint256 amount0Min,uint256 amount1Min,uint256 deadline)) payable returns (uint256 amount0,uint256 amount1)'
+  ];
+  const liqEstado = {};      // id -> datos leídos del pool
+  let liqActual = null;      // pool abierto en el modal
+  let liqEnviando = false;
+
+  function liqNombre(c){ return c.a + '/' + c.b + ' · ' + (c.fee / 10000) + '%'; }
+  function liqFmt(raw, dec){
+    const n = Number(ethers.formatUnits(raw, dec));
+    return n.toLocaleString('es', { maximumFractionDigits: n >= 100 ? 2 : (dec === 8 ? 6 : 4) });
+  }
+  function liqMeta(t0, t1, fee){
+    const x = String(t0).toLowerCase(), y = String(t1).toLowerCase();
+    return LIQ_POOLS.find(c => c.fee === fee
+      && [LIQ_TOK[c.a].a.toLowerCase(), LIQ_TOK[c.b].a.toLowerCase()].includes(x)
+      && [LIQ_TOK[c.a].a.toLowerCase(), LIQ_TOK[c.b].a.toLowerCase()].includes(y) && x !== y);
+  }
+
+  async function cargarLiquidez(){
+    const cont = document.getElementById('liqPools');
+    cont.innerHTML = LIQ_POOLS.map(c => liqTarjeta(c, null)).join('');
+    const prov = await getReadProvider();
+    const fac = new ethers.Contract(LIQ_FACTORY, LIQ_FACTORY_ABI, prov);
+    await Promise.all(LIQ_POOLS.map(async c => {
+      try{
+        const ta = LIQ_TOK[c.a], tb = LIQ_TOK[c.b];
+        // verificación: el pool tiene que ser el que devuelve la factory oficial
+        const real = await fac.getPool(ta.a, tb.a, c.fee);
+        if(real.toLowerCase() !== c.pool.toLowerCase()) throw new Error('pool no coincide');
+        const pool = new ethers.Contract(c.pool, LIQ_POOL_ABI, prov);
+        const [t0, t1, liq, s0] = await Promise.all([ pool.token0(), pool.token1(), pool.liquidity(), pool.slot0() ]);
+        if(liq === 0n) throw new Error('sin liquidez');
+        const ea = new ethers.Contract(ta.a, ERC20_ABI, prov), eb = new ethers.Contract(tb.a, ERC20_ABI, prov);
+        const [pa, pb] = await Promise.all([ ea.balanceOf(c.pool), eb.balanceOf(c.pool) ]);
+        let ua = 0n, ub = 0n;
+        if(userAddress){ [ua, ub] = await Promise.all([ ea.balanceOf(userAddress), eb.balanceOf(userAddress) ]); }
+        liqEstado[c.id] = { ok:true, t0, t1, sqrtP: s0.sqrtPriceX96, pa, pb, ua, ub };
+      }catch(e){ liqEstado[c.id] = { ok:false }; }
+      const el = document.getElementById('lp-' + c.id);
+      if(el) el.outerHTML = liqTarjeta(c, liqEstado[c.id]);
+    }));
+    if(userAddress) cargarPosiciones(prov);
+    else document.getElementById('liqPos').innerHTML = '<div class="empty-state">Conecta tu wallet para ver tus posiciones.</div>';
+  }
+
+  function liqTarjeta(c, st){
+    const cargando = !st, ok = st && st.ok;
+    const info = cargando ? 'Verificando…' : (ok
+      ? 'En el pool: ' + liqFmt(st.pa, LIQ_TOK[c.a].dec) + ' ' + c.a + ' + ' + liqFmt(st.pb, LIQ_TOK[c.b].dec) + ' ' + c.b
+      : 'No disponible ahora');
+    return `<div class="card" id="lp-${c.id}" style="margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:baseline;">
+        <div style="font-size:17px; font-weight:700;">${c.a} / ${c.b}</div>
+        <div style="font-size:13px; color:var(--buzz); font-weight:700;">Comisión ${c.fee / 10000}%</div>
+      </div>
+      <div style="font-size:13px; color:var(--text-faint); margin:4px 0 12px;">${info}</div>
+      <button class="btn" ${ok ? '' : 'disabled'} onclick="liqAbrir('${c.id}')">Agregar liquidez</button>
+      <a href="https://worldscan.org/address/${c.pool}" target="_blank" style="display:block; margin-top:10px; font-size:12px; color:var(--text-faint);">Ver pool en Worldscan ✓ verificado en la factory de Uniswap</a>
+    </div>`;
+  }
+
+  // ---- agregar liquidez (rango completo) ----
+  function liqAbrir(id){
+    const c = LIQ_POOLS.find(x => x.id === id), st = liqEstado[id];
+    if(!c || !st || !st.ok) return;
+    if(!userAddress){ showToast('Conecta tu wallet primero', true); return; }
+    liqActual = c;
+    document.getElementById('liqTitulo').textContent = 'Agregar liquidez · ' + liqNombre(c);
+    document.getElementById('liqLblA').textContent = 'Cantidad de ' + c.a;
+    document.getElementById('liqMontoA').value = '';
+    document.getElementById('liqNecesitas').textContent = '—';
+    document.getElementById('liqTienes').textContent = 'Tienes: ' + liqFmt(st.ua, LIQ_TOK[c.a].dec) + ' ' + c.a + ' y ' + liqFmt(st.ub, LIQ_TOK[c.b].dec) + ' ' + c.b;
+    document.getElementById('liqMsg').textContent = '';
+    openModal('liqModal');
+  }
+
+  // cuánto de B hace falta para un monto de A, según el precio actual del pool
+  function liqCantidades(montoA){
+    const c = liqActual, st = liqEstado[c.id];
+    const aEsT0 = st.t0.toLowerCase() === LIQ_TOK[c.a].a.toLowerCase();
+    const q = st.sqrtP * st.sqrtP;                 // precio token1/token0 × 2^192
+    const montoB = aEsT0 ? (montoA * q) >> 192n : (montoA << 192n) / q;
+    return { aEsT0, montoB, amount0: aEsT0 ? montoA : montoB, amount1: aEsT0 ? montoB : montoA };
+  }
+
+  function liqLeerA(){
+    try{
+      const v = ethers.parseUnits(document.getElementById('liqMontoA').value.trim().replace(',', '.'), LIQ_TOK[liqActual.a].dec);
+      return v > 0n ? v : null;
+    }catch(e){ return null; }
+  }
+
+  function liqCalc(){
+    if(!liqActual) return;
+    const c = liqActual, el = document.getElementById('liqNecesitas'), a = liqLeerA();
+    if(!a){ el.textContent = '—'; return; }
+    const { montoB } = liqCantidades(a);
+    el.textContent = liqFmt(montoB, LIQ_TOK[c.b].dec) + ' ' + c.b;
+  }
+
+  function liqMaxA(){
+    if(!liqActual) return;
+    const c = liqActual, st = liqEstado[c.id];
+    // el máximo de A está limitado por lo que alcanza de B
+    let a = st.ua;
+    liqActual = c;
+    let { montoB } = liqCantidades(a);
+    if(montoB > st.ub && montoB > 0n){ a = (a * st.ub) / montoB; }
+    a = (a * 99n) / 100n;   // pequeño margen por el precio
+    document.getElementById('liqMontoA').value = ethers.formatUnits(a, LIQ_TOK[c.a].dec);
+    liqCalc();
+  }
+
+  async function liqConfirmar(){
+    if(liqEnviando || !liqActual) return;
+    const c = liqActual, st = liqEstado[c.id], msg = document.getElementById('liqMsg');
+    const a = liqLeerA();
+    if(!a){ msg.textContent = 'Escribe un monto válido.'; return; }
+    const { aEsT0, montoB, amount0, amount1 } = liqCantidades(a);
+    if(a > st.ua){ msg.textContent = 'No tienes suficiente ' + c.a + '.'; return; }
+    if(montoB > st.ub){ msg.textContent = 'No tienes suficiente ' + c.b + '.'; return; }
+    const k = window._MiniKit || window.MiniKit;
+    if(!k || !(k.isInstalled && k.isInstalled())){ msg.textContent = 'Abre SWYN desde World App.'; return; }
+    const sp = LIQ_SPACING[c.fee], lim = Math.floor(887272 / sp) * sp;
+    liqEnviando = true; msg.textContent = 'Confirma en World App…';
+    try{
+      const erc = new ethers.Interface(ERC20_ABI), npm = new ethers.Interface(LIQ_NPM_ABI);
+      const tA = LIQ_TOK[c.a].a.toLowerCase(), tB = LIQ_TOK[c.b].a.toLowerCase();
+      const params = {
+        token0: st.t0, token1: st.t1, fee: c.fee, tickLower: -lim, tickUpper: lim,
+        amount0Desired: amount0, amount1Desired: amount1,
+        amount0Min: (amount0 * 95n) / 100n, amount1Min: (amount1 * 95n) / 100n,
+        recipient: userAddress, deadline: Math.floor(Date.now() / 1000) + 1200
+      };
+      const transactions = [
+        { to: tA, data: erc.encodeFunctionData('approve', [LIQ_NPM, a]) },
+        { to: tB, data: erc.encodeFunctionData('approve', [LIQ_NPM, montoB]) },
+        { to: LIQ_NPM.toLowerCase(), data: npm.encodeFunctionData('mint', [params]) }
+      ];
+      const res = await k.sendTransaction({ chainId: CHAIN_ID, transactions });
+      const ok = (res && res.data && res.data.status === 'success') || (res && res.finalPayload && res.finalPayload.status !== 'error');
+      if(ok){
+        showToast('Liquidez agregada');
+        closeModal('liqModal');
+        setTimeout(cargarLiquidez, 3000);
+      }else{
+        msg.textContent = 'No se completó. Intenta con un monto menor.';
+      }
+    }catch(e){
+      msg.textContent = (e && e.message) ? e.message : 'Falló el envío';
+    }finally{ liqEnviando = false; }
+  }
+
+  // ---- posiciones del usuario (solo las de pools de la lista) ----
+  const liqPosEstado = {};
+  async function cargarPosiciones(prov){
+    const cont = document.getElementById('liqPos');
+    try{
+      const npm = new ethers.Contract(LIQ_NPM, LIQ_NPM_ABI, prov);
+      const n = Math.min(Number(await npm.balanceOf(userAddress)), 60);
+      const ids = await Promise.all(Array.from({ length:n }, (_, i) => npm.tokenOfOwnerByIndex(userAddress, i)));
+      const deadline = Math.floor(Date.now() / 1000) + 1200;
+      const items = (await Promise.all(ids.map(async id => {
+        const pos = await npm.positions(id);
+        const c = liqMeta(pos.token0, pos.token1, Number(pos.fee));
+        if(!c) return null;
+        if(pos.liquidity === 0n && pos.tokensOwed0 === 0n && pos.tokensOwed1 === 0n) return null;
+        let cobro = [pos.tokensOwed0, pos.tokensOwed1], valor = [0n, 0n];
+        try{
+          const r = await npm.collect.staticCall({ tokenId:id, recipient:userAddress, amount0Max:LIQ_MAX128, amount1Max:LIQ_MAX128 }, { from:userAddress });
+          cobro = [r[0], r[1]];
+        }catch(e){}
+        if(pos.liquidity > 0n){
+          try{
+            const r = await npm.decreaseLiquidity.staticCall({ tokenId:id, liquidity:pos.liquidity, amount0Min:0n, amount1Min:0n, deadline }, { from:userAddress });
+            valor = [r[0], r[1]];
+          }catch(e){}
+        }
+        liqPosEstado[id.toString()] = { id, c, pos, cobro, valor };
+        return liqPosEstado[id.toString()];
+      }))).filter(Boolean);
+      if(!items.length){ cont.innerHTML = '<div class="empty-state">Aún no tienes posiciones.</div>'; return; }
+      cont.innerHTML = items.map(liqTarjetaPos).join('');
+    }catch(e){
+      cont.innerHTML = '<div class="empty-state">No se pudieron leer tus posiciones.</div>';
+    }
+  }
+
+  function liqTarjetaPos(it){
+    const { c, pos, cobro, valor } = it;
+    const d0 = LIQ_TOK[ pos.token0.toLowerCase() === LIQ_TOK[c.a].a.toLowerCase() ? c.a : c.b ].dec;
+    const s0 = pos.token0.toLowerCase() === LIQ_TOK[c.a].a.toLowerCase() ? c.a : c.b;
+    const s1 = s0 === c.a ? c.b : c.a, d1 = LIQ_TOK[s1].dec;
+    const hayCobro = cobro[0] > 0n || cobro[1] > 0n;
+    const id = it.id.toString();
+    return `<div class="card" style="margin-bottom:12px;">
+      <div style="font-size:16px; font-weight:700;">${liqNombre(c)}</div>
+      <div style="font-size:13px; color:var(--text-dim); margin-top:8px;">Tu aporte hoy</div>
+      <div style="font-size:15px; font-weight:600;">${liqFmt(valor[0], d0)} ${s0} + ${liqFmt(valor[1], d1)} ${s1}</div>
+      <div style="font-size:13px; color:var(--text-dim); margin-top:8px;">Comisiones por cobrar</div>
+      <div style="font-size:15px; font-weight:600;">${liqFmt(cobro[0], d0)} ${s0} + ${liqFmt(cobro[1], d1)} ${s1}</div>
+      <div style="display:flex; gap:10px; margin-top:12px;">
+        <button class="btn secondary" style="flex:1;" ${hayCobro ? '' : 'disabled'} onclick="liqCobrar('${id}')">Cobrar</button>
+        <button class="btn secondary" style="flex:1;" ${pos.liquidity > 0n ? '' : 'disabled'} onclick="liqRetirar('${id}')">Retirar todo</button>
+      </div>
+    </div>`;
+  }
+
+  async function liqEnviarTx(transactions, okMsg){
+    if(liqEnviando) return; liqEnviando = true;
+    try{
+      const k = window._MiniKit || window.MiniKit;
+      if(!k || !(k.isInstalled && k.isInstalled())){ showToast('Abre SWYN desde World App', true); return; }
+      const res = await k.sendTransaction({ chainId: CHAIN_ID, transactions });
+      const ok = (res && res.data && res.data.status === 'success') || (res && res.finalPayload && res.finalPayload.status !== 'error');
+      if(ok){ showToast(okMsg); setTimeout(cargarLiquidez, 3000); }
+      else showToast('No se completó', true);
+    }catch(e){ showToast((e && e.message) ? e.message : 'Falló el envío', true); }
+    finally{ liqEnviando = false; }
+  }
+
+  function liqCobrar(id){
+    const it = liqPosEstado[id]; if(!it) return;
+    const npm = new ethers.Interface(LIQ_NPM_ABI);
+    liqEnviarTx([{ to: LIQ_NPM.toLowerCase(), data: npm.encodeFunctionData('collect', [{ tokenId:it.id, recipient:userAddress, amount0Max:LIQ_MAX128, amount1Max:LIQ_MAX128 }]) }], 'Comisiones cobradas');
+  }
+
+  function liqRetirar(id){
+    const it = liqPosEstado[id]; if(!it) return;
+    const npm = new ethers.Interface(LIQ_NPM_ABI);
+    const deadline = Math.floor(Date.now() / 1000) + 1200;
+    liqEnviarTx([
+      { to: LIQ_NPM.toLowerCase(), data: npm.encodeFunctionData('decreaseLiquidity', [{ tokenId:it.id, liquidity:it.pos.liquidity, amount0Min:(it.valor[0] * 95n) / 100n, amount1Min:(it.valor[1] * 95n) / 100n, deadline }]) },
+      { to: LIQ_NPM.toLowerCase(), data: npm.encodeFunctionData('collect', [{ tokenId:it.id, recipient:userAddress, amount0Max:LIQ_MAX128, amount1Max:LIQ_MAX128 }]) }
+    ], 'Retiro enviado');
+  }
 
   // ============================================================
   //  SESIÓN: la firma de conexión se pide solo la primera vez.
