@@ -1524,7 +1524,7 @@
       <div style="font-size:14px; font-weight:700; margin-bottom:6px;">Ganancias estimadas</div>
       <div style="display:flex; justify-content:space-between; font-size:14px; color:var(--text-dim);"><span>Al mes</span><span id="ganarEstMes">—</span></div>
       <div style="display:flex; justify-content:space-between; font-size:14px; color:var(--text-dim); margin-top:4px;"><span>Al año</span><span id="ganarEstAnio">—</span></div>
-      <div style="font-size:12px; color:var(--text-faint); margin-top:8px; line-height:1.4;">Estimación con el rendimiento actual; cambia con el tiempo y no está garantizada. Comisión de SWYN: 0%. Con tecnología de Morpho.</div>
+      <div style="font-size:12px; color:var(--text-faint); margin-top:8px; line-height:1.4;">Estimación con el rendimiento actual; cambia con el tiempo y no está garantizada. Comisión de SWYN al depositar: <b id="ganarFee">…</b>, se descuenta de lo que guardas. Retirar no tiene comisión. Con tecnología de Morpho.</div>
     </div>
     <div id="ganarModalMsg" style="font-size:13px; color:var(--text-dim); margin:12px 0; min-height:18px;"></div>
     <button class="btn" id="ganarModalBtn" onclick="ganarConfirmar()">Confirmar</button>
@@ -1547,6 +1547,7 @@
     <div style="font-size:12px; color:var(--text-faint); line-height:1.5; margin:12px 0;">
       Rango completo: tu liquidez trabaja a cualquier precio. Puedes cobrar tus comisiones y retirar cuando quieras. Puede haber pérdida impermanente.
     </div>
+    <div style="font-size:12px; color:var(--text-dim); line-height:1.5; margin:0 0 10px;" id="liqFeeTxt"></div>
     <div id="liqMsg" style="font-size:13px; color:var(--text-dim); margin:6px 0; min-height:18px;"></div>
     <button class="btn" id="liqBtn" onclick="liqConfirmar()">Agregar liquidez</button>
   </div>
@@ -8840,7 +8841,9 @@
     'function maxRedeem(address) view returns (uint256)',
     'function deposit(uint256 assets, address receiver) returns (uint256)',
     'function withdraw(uint256 assets, address receiver, address owner) returns (uint256)',
-    'function redeem(uint256 shares, address receiver, address owner) returns (uint256)'
+    'function redeem(uint256 shares, address receiver, address owner) returns (uint256)',
+    'event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)',
+    'event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)'
   ];
   const ganarEstado = {};     // id -> { saldo, posicion, shares, apy }
   let ganarAccion = null;     // { modo:'guardar'|'retirar', v }
@@ -8864,6 +8867,19 @@
     }catch(e){ return null; }
   }
 
+  async function ganarCapital(vt){
+    try{
+      const [dep, ret] = await Promise.all([
+        vt.queryFilter(vt.filters.Deposit(null, userAddress), 0, 'latest'),
+        vt.queryFilter(vt.filters.Withdraw(null, null, userAddress), 0, 'latest')
+      ]);
+      let c = 0n;
+      dep.forEach(e => { c += e.args.assets; });
+      ret.forEach(e => { c -= e.args.assets; });
+      return c < 0n ? 0n : c;
+    }catch(e){ return null; }   // si el RPC no entrega el historial, no se muestra la ganancia
+  }
+
   async function cargarGanar(){
     const cont = document.getElementById('ganarList');
     if(!userAddress){ cont.innerHTML = '<div class="empty-state">Conecta tu wallet para ver tus vaults.</div>'; return; }
@@ -8873,9 +8889,11 @@
       try{
         const tk = new ethers.Contract(v.token, ERC20_ABI, prov);
         const vt = new ethers.Contract(v.vault, VAULT_ABI, prov);
-        const [saldo, shares] = await Promise.all([ tk.balanceOf(userAddress), vt.balanceOf(userAddress) ]);
+        const [saldo, shares, capital] = await Promise.all([ tk.balanceOf(userAddress), vt.balanceOf(userAddress), ganarCapital(vt) ]);
         const posicion = shares > 0n ? await vt.convertToAssets(shares) : 0n;
-        ganarEstado[v.id] = { saldo, shares, posicion, apy: ganarEstado[v.id] ? ganarEstado[v.id].apy : null };
+        // ganancia = lo que valen hoy tus participaciones menos el capital neto que pusiste (depósitos − retiros)
+        const ganancia = (capital !== null && posicion > capital) ? posicion - capital : 0n;
+        ganarEstado[v.id] = { saldo, shares, posicion, capital, ganancia, apy: ganarEstado[v.id] ? ganarEstado[v.id].apy : null };
       }catch(e){ ganarEstado[v.id] = { error:true }; }
       document.getElementById('gv-' + v.id).outerHTML = ganarTarjeta(v, ganarEstado[v.id]);
     }));
@@ -8895,6 +8913,7 @@
     const apy = (st && typeof st.apy === 'number') ? st.apy.toFixed(2) + '% APY' : 'APY: ver en Morpho';
     const dis = (!cargando && !err) ? st.saldo === 0n : true;
     const tiene = (!cargando && !err) ? st.posicion > 0n : false;
+    const hayG = (!cargando && !err) && st.ganancia > 10n ** BigInt(Math.max(v.dec - 6, 0));
     return '<div class="card" id="gv-' + v.id + '" style="margin-bottom:12px;">'
       + '<div style="display:flex; justify-content:space-between; align-items:baseline;">'
       +   '<div style="font-size:17px; font-weight:700;">' + v.nombre + '</div>'
@@ -8902,11 +8921,13 @@
       + '</div>'
       + '<div style="font-size:13px; color:var(--text-faint); margin:4px 0 12px;">Token: ' + v.simbolo + ' · Curador: Re7 Labs<br>Rendimiento base para todos. Quienes estén verificados con World ID pueden recibir un bono extra de Morpho (no incluido aquí).</div>'
       + '<div style="font-size:13px; color:var(--text-dim);">Tu depósito</div>'
-      + '<div style="font-size:22px; font-weight:700; margin-bottom:12px;">' + (cargando ? 'Cargando…' : (err ? 'No se pudo leer' : pos)) + '</div>'
+      + '<div style="font-size:22px; font-weight:700; margin-bottom:' + (hayG ? '4' : '12') + 'px;">' + (cargando ? 'Cargando…' : (err ? 'No se pudo leer' : pos)) + '</div>'
+      + (hayG ? '<div style="font-size:13px; color:var(--text-dim); margin-bottom:12px;">Ganancia acumulada: <b style="color:var(--up);">' + ganarFmt(st.ganancia, v.dec) + ' ' + v.simbolo + '</b></div>' : '')
       + '<div style="display:flex; gap:10px;">'
       +   '<button class="btn" style="flex:1;" ' + (dis ? 'disabled' : '') + ' onclick="ganarAbrir(\'guardar\',\'' + v.id + '\')">Guardar</button>'
       +   '<button class="btn secondary" style="flex:1;" ' + (tiene ? '' : 'disabled') + ' onclick="ganarAbrir(\'retirar\',\'' + v.id + '\')">Retirar</button>'
       + '</div>'
+      + (hayG ? '<button class="btn secondary" style="width:100%; margin-top:10px;" onclick="ganarAbrirGanancia(\'' + v.id + '\')">Retirar ganancia</button>' : '')
       + '<a href="https://worldscan.org/address/' + v.vault + '" target="_blank" style="display:block; margin-top:10px; font-size:12px; color:var(--text-faint);">Ver contrato en Worldscan</a>'
       + '</div>';
   }
@@ -8923,6 +8944,7 @@
     document.getElementById('ganarModalBtn').textContent = modo === 'guardar' ? 'Guardar' : 'Retirar';
     openModal('ganarModal');
     ganarCalc();
+    cargarEarnFees().then(() => { const el = document.getElementById('ganarFee'); if(el) el.textContent = earnFees ? pctTxt(earnFees.g) : '—'; });
   }
 
   function ganarPct(pct){
@@ -8946,6 +8968,15 @@
     const y = n * st.apy / 100, d = v.dec === 6 ? 2 : 4;
     const f = x => x.toLocaleString('es', { maximumFractionDigits: d }) + ' ' + v.simbolo;
     anio.textContent = f(y); mes.textContent = f(y / 12);
+  }
+
+  function ganarAbrirGanancia(id){
+    const v = GANAR_VAULTS.find(x => x.id === id), st = ganarEstado[id];
+    if(!v || !st || st.error || !(st.ganancia > 0n)) return;
+    ganarAbrir('retirar', id);
+    document.getElementById('ganarModalTitulo').textContent = 'Retirar ganancia · ' + v.simbolo;
+    document.getElementById('ganarModalDisp').textContent = 'Ganancia disponible: ' + ganarFmt(st.ganancia, v.dec) + ' ' + v.simbolo + ' (tu depósito sigue guardado)';
+    document.getElementById('ganarMonto').value = ethers.formatUnits(st.ganancia, v.dec);
   }
 
   function ganarMax(){
@@ -8972,9 +9003,12 @@
       const erc20 = new ethers.Interface(ERC20_ABI), vi = new ethers.Interface(VAULT_ABI);
       let transactions;
       if(modo === 'guardar'){
+        if(!earnFees) await cargarEarnFees();
+        if(!earnFees) throw new Error('No se pudo leer la comisión. Intenta de nuevo.');
+        const p2 = new ethers.Interface(PERMIT2_APPROVE_ABI), ei = new ethers.Interface(EARN_ABI);
         transactions = [
-          { to: v.token.toLowerCase(), data: erc20.encodeFunctionData('approve', [v.vault, monto]) },
-          { to: v.vault.toLowerCase(), data: vi.encodeFunctionData('deposit', [monto, userAddress]) }
+          { to: PERMIT2.toLowerCase(), data: p2.encodeFunctionData('approve', [v.token, SWYN_EARN, monto, 0]) },
+          { to: SWYN_EARN.toLowerCase(), data: ei.encodeFunctionData('guardar', [v.vault, monto]) }
         ];
       }else if(monto >= st.posicion){
         // retiro total: se rescatan todas las participaciones, sin dejar restos
@@ -9035,6 +9069,29 @@
     'function collect((uint256 tokenId,address recipient,uint128 amount0Max,uint128 amount1Max)) payable returns (uint256 amount0,uint256 amount1)',
     'function decreaseLiquidity((uint256 tokenId,uint128 liquidity,uint256 amount0Min,uint256 amount1Min,uint256 deadline)) payable returns (uint256 amount0,uint256 amount1)'
   ];
+  const SWYN_EARN = '0x3297D6cfa8e46bc7e31484d5C9d33cd889eEB2A9';
+  const EARN_ABI = [
+    'function feeGuardarBps() view returns (uint256)',
+    'function feePoolEntradaBps() view returns (uint256)',
+    'function feePoolSalidaBps() view returns (uint256)',
+    'function guardar(address vault, uint256 monto) returns (uint256)',
+    'function agregarLiquidez((address token0,address token1,uint24 fee,uint256 monto0,uint256 monto1,uint256 min0,uint256 min1,uint256 deadline) a) returns (uint256)',
+    'function retirarLiquidez(uint256 tokenId, uint256 min0, uint256 min1, uint256 deadline)'
+  ];
+  const PERMIT2_APPROVE_ABI = ['function approve(address token, address spender, uint160 amount, uint48 expiration)'];
+  const NPM_APPROVE_ABI = ['function approve(address to, uint256 tokenId)'];
+  let earnFees = null;   // { g: guardar, e: entrada pool, s: salida pool } en puntos base
+  async function cargarEarnFees(){
+    try{
+      const prov = await getReadProvider();
+      const c = new ethers.Contract(SWYN_EARN, EARN_ABI, prov);
+      const [g, e, sl] = await Promise.all([ c.feeGuardarBps(), c.feePoolEntradaBps(), c.feePoolSalidaBps() ]);
+      earnFees = { g: Number(g), e: Number(e), s: Number(sl) };
+    }catch(x){ earnFees = null; }
+    return earnFees;
+  }
+  function pctTxt(bps){ return (bps / 100).toLocaleString('es', { maximumFractionDigits: 2 }) + '%'; }
+
   const liqEstado = {};      // id -> datos leídos del pool
   let liqActual = null;      // pool abierto en el modal
   let liqEnviando = false;
@@ -9107,6 +9164,7 @@
     document.getElementById('liqTienes').textContent = 'Tienes: ' + liqFmt(st.ua, LIQ_TOK[c.a].dec) + ' ' + c.a + ' y ' + liqFmt(st.ub, LIQ_TOK[c.b].dec) + ' ' + c.b;
     document.getElementById('liqMsg').textContent = '';
     openModal('liqModal');
+    cargarEarnFees().then(() => { const el = document.getElementById('liqFeeTxt'); if(el) el.textContent = earnFees ? 'Comisión de SWYN: ' + pctTxt(earnFees.e) + ' al agregar (se descuenta de lo que aportas) y ' + pctTxt(earnFees.s) + ' al retirar. Cobrar tus comisiones del pool no tiene costo.' : ''; });
   }
 
   // cuánto de B hace falta para un monto de A, según el precio actual del pool
@@ -9159,18 +9217,20 @@
     const sp = LIQ_SPACING[c.fee], lim = Math.floor(887272 / sp) * sp;
     liqEnviando = true; msg.textContent = 'Confirma en World App…';
     try{
-      const erc = new ethers.Interface(ERC20_ABI), npm = new ethers.Interface(LIQ_NPM_ABI);
-      const tA = LIQ_TOK[c.a].a.toLowerCase(), tB = LIQ_TOK[c.b].a.toLowerCase();
-      const params = {
-        token0: st.t0, token1: st.t1, fee: c.fee, tickLower: -lim, tickUpper: lim,
-        amount0Desired: amount0, amount1Desired: amount1,
-        amount0Min: (amount0 * 95n) / 100n, amount1Min: (amount1 * 95n) / 100n,
-        recipient: userAddress, deadline: Math.floor(Date.now() / 1000) + 1200
+      if(!earnFees) await cargarEarnFees();
+      if(!earnFees) throw new Error('No se pudo leer la comisión. Intenta de nuevo.');
+      const p2 = new ethers.Interface(PERMIT2_APPROVE_ABI), ei = new ethers.Interface(EARN_ABI);
+      const neto0 = (amount0 * BigInt(10000 - earnFees.e)) / 10000n;
+      const neto1 = (amount1 * BigInt(10000 - earnFees.e)) / 10000n;
+      const args = {
+        token0: st.t0, token1: st.t1, fee: c.fee, monto0: amount0, monto1: amount1,
+        min0: (neto0 * 95n) / 100n, min1: (neto1 * 95n) / 100n,
+        deadline: Math.floor(Date.now() / 1000) + 1200
       };
       const transactions = [
-        { to: tA, data: erc.encodeFunctionData('approve', [LIQ_NPM, a]) },
-        { to: tB, data: erc.encodeFunctionData('approve', [LIQ_NPM, montoB]) },
-        { to: LIQ_NPM.toLowerCase(), data: npm.encodeFunctionData('mint', [params]) }
+        { to: PERMIT2.toLowerCase(), data: p2.encodeFunctionData('approve', [st.t0, SWYN_EARN, amount0, 0]) },
+        { to: PERMIT2.toLowerCase(), data: p2.encodeFunctionData('approve', [st.t1, SWYN_EARN, amount1, 0]) },
+        { to: SWYN_EARN.toLowerCase(), data: ei.encodeFunctionData('agregarLiquidez', [args]) }
       ];
       const res = await k.sendTransaction({ chainId: CHAIN_ID, transactions });
       const ok = (res && res.data && res.data.status === 'success') || (res && res.finalPayload && res.finalPayload.status !== 'error');
@@ -9191,6 +9251,7 @@
   async function cargarPosiciones(prov){
     const cont = document.getElementById('liqPos');
     try{
+      await cargarEarnFees();
       const npm = new ethers.Contract(LIQ_NPM, LIQ_NPM_ABI, prov);
       const n = Math.min(Number(await npm.balanceOf(userAddress)), 60);
       const ids = await Promise.all(Array.from({ length:n }, (_, i) => npm.tokenOfOwnerByIndex(userAddress, i)));
@@ -9234,6 +9295,7 @@
       <div style="font-size:15px; font-weight:600;">${liqFmt(valor[0], d0)} ${s0} + ${liqFmt(valor[1], d1)} ${s1}</div>
       <div style="font-size:13px; color:var(--text-dim); margin-top:8px;">Comisiones por cobrar</div>
       <div style="font-size:15px; font-weight:600;">${liqFmt(cobro[0], d0)} ${s0} + ${liqFmt(cobro[1], d1)} ${s1}</div>
+      <div style="font-size:12px; color:var(--text-faint); margin-top:10px;">${earnFees ? 'Al retirar todo se cobra ' + pctTxt(earnFees.s) + ' de comisión de SWYN.' : ''}</div>
       <div style="display:flex; gap:10px; margin-top:12px;">
         <button class="btn secondary" style="flex:1;" ${hayCobro ? '' : 'disabled'} onclick="liqCobrar('${id}')">Cobrar</button>
         <button class="btn secondary" style="flex:1;" ${pos.liquidity > 0n ? '' : 'disabled'} onclick="liqRetirar('${id}')">Retirar todo</button>
@@ -9264,9 +9326,11 @@
     const it = liqPosEstado[id]; if(!it) return;
     const npm = new ethers.Interface(LIQ_NPM_ABI);
     const deadline = Math.floor(Date.now() / 1000) + 1200;
+    const na = new ethers.Interface(NPM_APPROVE_ABI), ei = new ethers.Interface(EARN_ABI);
+    // 1) se autoriza el NFT al contrato solo para este retiro; 2) el contrato retira, cobra su comisión y te envía el resto
     liqEnviarTx([
-      { to: LIQ_NPM.toLowerCase(), data: npm.encodeFunctionData('decreaseLiquidity', [{ tokenId:it.id, liquidity:it.pos.liquidity, amount0Min:(it.valor[0] * 95n) / 100n, amount1Min:(it.valor[1] * 95n) / 100n, deadline }]) },
-      { to: LIQ_NPM.toLowerCase(), data: npm.encodeFunctionData('collect', [{ tokenId:it.id, recipient:userAddress, amount0Max:LIQ_MAX128, amount1Max:LIQ_MAX128 }]) }
+      { to: LIQ_NPM.toLowerCase(), data: na.encodeFunctionData('approve', [SWYN_EARN, it.id]) },
+      { to: SWYN_EARN.toLowerCase(), data: ei.encodeFunctionData('retirarLiquidez', [it.id, (it.valor[0] * 95n) / 100n, (it.valor[1] * 95n) / 100n, deadline]) }
     ], 'Retiro enviado');
   }
 
