@@ -2388,11 +2388,73 @@
     }
   }
 
+  let cargandoBal = false;
   async function loadBalances(){
+    if(cargandoBal) return;
+    cargandoBal = true;
+    try{ await loadBalancesReal(); }
+    finally{ cargandoBal = false; }
+  }
+
+  // ---- lo último que el usuario vio: se muestra al instante y se actualiza por detrás ----
+  function snapKey(){ return 'swyn_snap_' + String(userAddress || '').toLowerCase(); }
+
+  function guardarSnapshot(tokens, totalText){
+    try{
+      const lite = tokens.map(t => ({
+        symbol: t.symbol, name: t.name, address: t.address, decimals: Number(t.decimals),
+        icon: (typeof t.icon === 'string' && t.icon.startsWith('http')) ? t.icon : null,
+        balance: String(t.balance), usdValue: t.usdValue
+      }));
+      localStorage.setItem(snapKey(), JSON.stringify({ t: Date.now(), total: totalText, tokens: lite }));
+    }catch(e){}
+  }
+
+  function filaToken(t){
+    const row = document.createElement('div');
+    row.className = 'token-row';
+    row.style.cursor = 'pointer';
+    row.innerHTML = `
+      <div class="tk-icon">${tkIconHtml(t)}</div>
+      <div class="tk-info">
+        <div class="tk-name">${t.name}</div>
+        <div class="tk-sub">${trimNum(t.balance)} ${t.symbol}</div>
+      </div>
+      <div class="tk-amt">
+        <div class="tk-bal">${(t.usdValue !== null && t.usdValue !== undefined) ? '$' + t.usdValue.toLocaleString('es',{maximumFractionDigits:2}) : '—'}</div>
+      </div>`;
+    row.onclick = () => openTokenDetail(t);
+    return row;
+  }
+
+  function pintarSnapshot(){
+    if(!userAddress) return false;
+    let snap = null;
+    try{ snap = JSON.parse(localStorage.getItem(snapKey()) || 'null'); }catch(e){}
+    if(!snap || !Array.isArray(snap.tokens) || !snap.tokens.length) return false;
+    const ocultos = tokensOcultos();
+    const frag = document.createDocumentFragment();
+    const visibles = [];
+    snap.tokens.forEach(t => {
+      if(ocultos.includes(String(t.address).toLowerCase())) return;
+      frag.appendChild(filaToken(t));
+      visibles.push(t);
+    });
+    if(!visibles.length) return false;
+    document.getElementById('tokenList').replaceChildren(frag);
+    walletTokens = visibles;
+    const totalEl = document.getElementById('totalUsd');
+    if(totalEl && snap.total) totalEl.textContent = snap.total;
+    return true;
+  }
+
+  async function loadBalancesReal(){
     try{
       const p = await getReadProvider();
       const listEl = document.getElementById('tokenList');
-      listEl.innerHTML = `<div class="empty-state">Leyendo tus tokens…</div>`;
+      if(!listEl.querySelector('.token-row')){
+        if(!pintarSnapshot()) listEl.innerHTML = `<div class="empty-state">Leyendo tus tokens…</div>`;
+      }
 
       // lista fija: WLD, ZORP y los tokens curados que confirmaste como confiables.
       // Se lee cada uno directo de la blockchain (símbolo, nombre, decimales, saldo) —
@@ -2522,7 +2584,7 @@
 
       const withBalance = results.filter(r => r.bal !== null && r.bal > 0n);
 
-      listEl.innerHTML = `<div class="empty-state">Buscando precios (${withBalance.length} tokens con saldo)…</div>`;
+      if(!listEl.querySelector('.token-row')) listEl.innerHTML = `<div class="empty-state">Buscando precios (${withBalance.length} tokens con saldo)…</div>`;
 
       // precio en USD vía DexScreener, solo informativo — no decide si se muestra o no
       async function fetchPricesInBatches(items, batchSize){
@@ -2586,8 +2648,8 @@
       // los que DexScreener no pudo valuar se calculan desde sus pools reales
       // (de a pocos, para no saturar el RPC)
       const sinPrecio2 = priced.filter(r => r.usdValue === null);
-      for(let i = 0; i < sinPrecio2.length; i += 4){
-        await Promise.all(sinPrecio2.slice(i, i + 4).map(async (r) => {
+      for(let i = 0; i < sinPrecio2.length; i += 6){
+        await Promise.all(sinPrecio2.slice(i, i + 6).map(async (r) => {
           const pu = await precioOnchainUsd(r.address, Number(r.decimals));
           if(pu != null && isFinite(pu) && pu > 0){
             r.usdValue = parseFloat(ethers.formatUnits(r.bal, r.decimals)) * pu;
@@ -2595,7 +2657,7 @@
         }));
       }
 
-      listEl.innerHTML = '';
+      const frag = document.createDocumentFragment();
       let totalUsd = 0;
       let anyShown = false;
       const shownTokens = [];
@@ -2622,8 +2684,8 @@
       }
 
       const geckoUrls = [];
-      for(let i = 0; i < priced.length; i += 5){
-        const lote = priced.slice(i, i + 5);
+      for(let i = 0; i < priced.length; i += 8){
+        const lote = priced.slice(i, i + 8);
         const res  = await Promise.all(lote.map(resolverLogo));
         geckoUrls.push(...res);
       }
@@ -2657,12 +2719,13 @@
         row.onclick = () => r.esLanzado
           ? abrirLanzadoPorDireccion(r.address)
           : openTokenDetail(tkForDetail);
-        listEl.appendChild(row);
+        frag.appendChild(row);
         anyShown = true;
 
         shownTokens.push(tkForDetail);
       });
 
+      if(anyShown) listEl.replaceChildren(frag);
       walletTokens = shownTokens.length ? shownTokens : walletTokens;
 
       // sincronizar los tokens ya elegidos en Swap/Enviar con su saldo real recién cargado
@@ -2683,6 +2746,7 @@
       const totalText = '$' + totalUsd.toLocaleString('es', {maximumFractionDigits:2});
       const totalEl = document.getElementById('totalUsd');
       if(totalEl) totalEl.textContent = totalText;
+      if(anyShown) guardarSnapshot(shownTokens, totalText);
 
       if(!anyShown){
         listEl.innerHTML = '<div class="empty-state">No se encontraron tokens con saldo en tu lista</div>';
@@ -9255,6 +9319,14 @@
     onWalletConnected();
   }
   reconectarSolo();
+
+  // se actualiza solo, sin avisos ni relojitos: cada minuto, solo si la app está a la vista en Inicio
+  setInterval(() => {
+    try{
+      const a = document.querySelector('.screen.active');
+      if(!document.hidden && userAddress && !refrescando && !cargandoBal && a && a.id === 'screen-inicio') loadBalances();
+    }catch(e){}
+  }, 60000);
 </script>
 
 <script type="module">
