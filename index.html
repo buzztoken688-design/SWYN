@@ -1326,6 +1326,16 @@
         </div>
       </div>
       <div id="liqPools"><div class="empty-state">Cargando…</div></div>
+      <div class="sec-h" style="margin:22px 0 10px;">Buscar otro pool</div>
+      <div class="card" style="margin-bottom:12px;">
+        <div style="font-size:13px; color:var(--text-dim); line-height:1.5; margin-bottom:10px;">
+          Busca un token por nombre, símbolo o dirección. Solo aparecen tokens de la lista de SWYN y pools reales de Uniswap (de la factory oficial) con dinero adentro.
+        </div>
+        <input class="field" id="liqBuscaInp" placeholder="Ej. FutureX, ZORP o 0x…" oninput="liqBuscarInput(this.value)" autocomplete="off">
+        <div id="liqBuscaTok" style="margin-top:10px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+      </div>
+      <div id="liqBuscaRes"></div>
+
       <div class="sec-h" style="margin:22px 0 10px;">Tus posiciones</div>
       <div id="liqPos"><div class="empty-state">—</div></div>
     </section>
@@ -9086,7 +9096,7 @@
     { id:'wbtc-usdc-500',  a:'WBTC', b:'USDC', fee:500,   pool:'0xdCe053d9ba0Fa2c5f772416b64F191158Cbcc32E' },
     { id:'wld-weth-3000',  a:'WLD',  b:'WETH', fee:3000,  pool:'0x494D68e3cAb640fa50F4c1B3E2499698D1a173A0' }
   ];
-  const LIQ_SPACING = { 500:10, 3000:60, 10000:200 };
+  const LIQ_SPACING = { 100:1, 500:10, 3000:60, 10000:200 };
   const LIQ_MAX128 = (1n << 128n) - 1n;
   const LIQ_FACTORY_ABI = ['function getPool(address,address,uint24) view returns (address)'];
   const LIQ_POOL_ABI = [
@@ -9137,9 +9147,145 @@
   }
   function liqMeta(t0, t1, fee){
     const x = String(t0).toLowerCase(), y = String(t1).toLowerCase();
-    return LIQ_POOLS.find(c => c.fee === fee
+    const est = LIQ_POOLS.find(c => c.fee === fee
       && [LIQ_TOK[c.a].a.toLowerCase(), LIQ_TOK[c.b].a.toLowerCase()].includes(x)
       && [LIQ_TOK[c.a].a.toLowerCase(), LIQ_TOK[c.b].a.toLowerCase()].includes(y) && x !== y);
+    if(est) return est;
+    if(liqUniverso && x !== y && LIQ_SPACING[fee]){
+      const u0 = liqUniverso.find(t => t.address.toLowerCase() === x), u1 = liqUniverso.find(t => t.address.toLowerCase() === y);
+      if(u0 && u1) return { id:'pos-' + x + y + fee, a: liqRegistrarToken(u0), b: liqRegistrarToken(u1), fee, pool: null, dyn: true };
+    }
+    return null;
+  }
+
+  // ---- buscador: universo de tokens permitidos (los que ya están en el Developer Portal) ----
+  let liqUniverso = null;
+  const liqDin = {};
+  const liqPermCache = {};
+
+  function liqRegistrarToken(u){
+    const addr = u.address.toLowerCase();
+    for(const k of Object.keys(LIQ_TOK)) if(LIQ_TOK[k].a.toLowerCase() === addr) return k;
+    const base = String(u.symbol || 'TOKEN').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 9) || 'TOKEN';
+    let key = base, n = 2;
+    while(LIQ_TOK[key]) key = base + (n++);
+    LIQ_TOK[key] = { a: u.address, dec: u.dec };
+    return key;
+  }
+
+  async function liqCargarUniverso(){
+    if(liqUniverso) return liqUniverso;
+    try{
+      const c = JSON.parse(localStorage.getItem('swyn_universo2') || 'null');
+      if(c && Date.now() - c.t < 7 * 86400000 && Array.isArray(c.list) && c.list.length){ liqUniverso = c.list; return liqUniverso; }
+    }catch(e){}
+    const prov = await getReadProvider();
+    const abi = ['function symbol() view returns (string)', 'function name() view returns (string)', 'function decimals() view returns (uint8)'];
+    let extra = [];
+    try{ extra = (await direccionesAgregadas() || []).map(d => (typeof d === 'string' ? d : (d && d.address) || '')).filter(a => /^0x[0-9a-fA-F]{40}$/.test(a)); }catch(e){}
+    const vistos = new Set(), addrs = [];
+    Object.values(LIQ_TOK).map(x => x.a).concat(CURATED_TOKEN_ADDRESSES, extra).forEach(a => { const k = a.toLowerCase(); if(!vistos.has(k)){ vistos.add(k); addrs.push(a); } });
+    const lista = [];
+    for(let i = 0; i < addrs.length; i += 10){
+      const lote = await Promise.all(addrs.slice(i, i + 10).map(async a => {
+        try{
+          const t = new ethers.Contract(a, abi, prov);
+          const [sy, nm, d] = await Promise.all([ t.symbol(), t.name(), t.decimals() ]);
+          return { address: a, symbol: sy, name: nm, dec: Number(d) };
+        }catch(e){ return null; }
+      }));
+      lote.forEach(x => { if(x) lista.push(x); });
+    }
+    if(lista.length){
+      liqUniverso = lista;
+      try{ localStorage.setItem('swyn_universo2', JSON.stringify({ t: Date.now(), list: lista })); }catch(e){}
+    }
+    return lista;
+  }
+
+  async function liqPoolPermitido(pool){
+    const k = String(pool).toLowerCase(), c = liqPermCache[k];
+    if(c && Date.now() - c.at < 60000) return c.v;
+    const prov = await getReadProvider();
+    const v = await new ethers.Contract(SWYN_EARN, ['function poolPermitido(address) view returns (bool)'], prov).poolPermitido(pool);
+    liqPermCache[k] = { v, at: Date.now() };
+    return v;
+  }
+
+  async function liqLeerPool(c){
+    try{
+      const prov = await getReadProvider();
+      const ta = LIQ_TOK[c.a], tb = LIQ_TOK[c.b];
+      const pool = new ethers.Contract(c.pool, LIQ_POOL_ABI, prov);
+      const [t0, t1, liq, s0] = await Promise.all([ pool.token0(), pool.token1(), pool.liquidity(), pool.slot0() ]);
+      if(liq === 0n) return { ok: false };
+      const ea = new ethers.Contract(ta.a, ERC20_ABI, prov), eb = new ethers.Contract(tb.a, ERC20_ABI, prov);
+      const [pa, pb] = await Promise.all([ ea.balanceOf(c.pool), eb.balanceOf(c.pool) ]);
+      let ua = 0n, ub = 0n;
+      if(userAddress){ [ua, ub] = await Promise.all([ ea.balanceOf(userAddress), eb.balanceOf(userAddress) ]); }
+      return { ok: true, t0, t1, sqrtP: s0.sqrtPriceX96, pa, pb, ua, ub };
+    }catch(e){ return { ok: false }; }
+  }
+
+  let liqBuscaTimer = null;
+  function liqBuscarInput(v){
+    clearTimeout(liqBuscaTimer);
+    liqBuscaTimer = setTimeout(() => liqBuscarAhora(String(v || '').trim()), 350);
+  }
+
+  async function liqBuscarAhora(q){
+    const tok = document.getElementById('liqBuscaTok'), res = document.getElementById('liqBuscaRes');
+    if(!q){ tok.innerHTML = ''; res.innerHTML = ''; return; }
+    tok.innerHTML = '<span style="font-size:13px; color:var(--text-faint);">Buscando…</span>';
+    const uni = await liqCargarUniverso();
+    const ql = q.toLowerCase();
+    let hallados;
+    if(/^0x[0-9a-f]{40}$/i.test(q)) hallados = uni.filter(t => t.address.toLowerCase() === ql);
+    else hallados = uni.filter(t => String(t.symbol).toLowerCase().includes(ql) || String(t.name).toLowerCase().includes(ql)).slice(0, 8);
+    if(!hallados.length){
+      tok.innerHTML = '<span style="font-size:13px; color:var(--text-faint);">Ese token no está en la lista de SWYN.</span>';
+      return;
+    }
+    tok.innerHTML = hallados.map(t => `<button class="btn ghost" style="padding:8px 12px; font-size:13px;" onclick="liqBuscarPools('${t.address}')">${t.symbol}</button>`).join('');
+    if(hallados.length === 1) liqBuscarPools(hallados[0].address);
+  }
+
+  async function liqBuscarPools(addr){
+    const res = document.getElementById('liqBuscaRes');
+    res.innerHTML = '<div class="empty-state">Buscando pools reales…</div>';
+    const uni = await liqCargarUniverso();
+    const u = uni.find(t => t.address.toLowerCase() === addr.toLowerCase());
+    if(!u){ res.innerHTML = ''; return; }
+    const prov = await getReadProvider();
+    const fac = new ethers.Contract(LIQ_FACTORY, LIQ_FACTORY_ABI, prov);
+    const keyT = liqRegistrarToken(u);
+    const minimo = { WLD: 5n * 10n ** 18n, USDC: 5n * 10n ** 6n, WETH: 2n * 10n ** 15n };
+    const contras = ['WLD', 'USDC', 'WETH'].filter(k => LIQ_TOK[k].a.toLowerCase() !== addr.toLowerCase());
+    const halladas = [];
+    await Promise.all(contras.flatMap(k => [100, 500, 3000, 10000].map(async fee => {
+      try{
+        const pool = await fac.getPool(addr, LIQ_TOK[k].a, fee);
+        if(/^0x0{40}$/i.test(pool)) return;
+        const bal = await new ethers.Contract(LIQ_TOK[k].a, ERC20_ABI, prov).balanceOf(pool);
+        if(bal < minimo[k]) return;
+        const est = LIQ_POOLS.find(x => x.pool.toLowerCase() === pool.toLowerCase());
+        const c = est || { id: 'dyn-' + pool.toLowerCase(), a: keyT, b: k, fee, pool, dyn: true };
+        const st = await liqLeerPool(c);
+        if(!st.ok) return;
+        if(!est) liqDin[c.id] = c;
+        liqEstado[c.id] = st;
+        let hab = !!est;
+        if(!est){ try{ hab = await liqPoolPermitido(pool); }catch(e){} }
+        c.habilitado = hab;
+        halladas.push({ c, peso: bal * (k === 'USDC' ? 10n ** 12n : 1n) });
+      }catch(e){}
+    })));
+    halladas.sort((x, y) => (y.peso > x.peso ? 1 : (y.peso < x.peso ? -1 : 0)));
+    if(!halladas.length){
+      res.innerHTML = '<div class="empty-state">No hay pools reales de ' + u.symbol + ' con dinero suficiente contra WLD, USDC o WETH.</div>';
+      return;
+    }
+    res.innerHTML = halladas.map(h => liqTarjeta(h.c, liqEstado[h.c.id])).join('');
   }
 
   async function cargarLiquidez(){
@@ -9181,13 +9327,14 @@
       </div>
       <div style="font-size:13px; color:var(--text-faint); margin:4px 0 12px;">${info}</div>
       <button class="btn" ${ok ? '' : 'disabled'} onclick="liqAbrir('${c.id}')">Agregar liquidez</button>
-      <a href="https://worldscan.org/address/${c.pool}" target="_blank" style="display:block; margin-top:10px; font-size:12px; color:var(--text-faint);">Ver pool en Worldscan ✓ verificado en la factory de Uniswap</a>
+      <div style="font-size:12px; margin-top:10px; color:${(c.dyn && !c.habilitado) ? '#b45309' : 'var(--text-faint)'};">${(c.dyn && !c.habilitado) ? '⚠ Pool real de Uniswap, pero no verificado por SWYN. Riesgo alto: revisa el token antes de poner liquidez.' : '✓ Pool verificado en la factory de Uniswap'}</div>
+      <a href="https://worldscan.org/address/${c.pool}" target="_blank" style="display:block; margin-top:6px; font-size:12px; color:var(--text-faint);">Ver pool en Worldscan</a>
     </div>`;
   }
 
   // ---- agregar liquidez (rango completo) ----
   function liqAbrir(id){
-    const c = LIQ_POOLS.find(x => x.id === id), st = liqEstado[id];
+    const c = LIQ_POOLS.find(x => x.id === id) || liqDin[id], st = liqEstado[id];
     if(!c || !st || !st.ok) return;
     if(!userAddress){ showToast('Conecta tu wallet primero', true); return; }
     liqActual = c;
@@ -9198,7 +9345,14 @@
     document.getElementById('liqTienes').textContent = 'Tienes: ' + liqFmt(st.ua, LIQ_TOK[c.a].dec) + ' ' + c.a + ' y ' + liqFmt(st.ub, LIQ_TOK[c.b].dec) + ' ' + c.b;
     document.getElementById('liqMsg').textContent = '';
     openModal('liqModal');
-    cargarEarnFees().then(() => { const el = document.getElementById('liqFeeTxt'); if(el) el.textContent = earnFees ? 'Comisión del servicio: ' + pctTxt(earnFees.e) + ' al agregar y ' + pctTxt(earnFees.s) + ' al retirar.' : ''; });
+    cargarEarnFees().then(async () => {
+      const el = document.getElementById('liqFeeTxt'); if(!el) return;
+      let porContrato = true;
+      try{ porContrato = !!(await liqPoolPermitido(c.pool)); }catch(e){}
+      el.textContent = !porContrato
+        ? 'Este pool no está habilitado por SWYN: la operación va directo a Uniswap, sin comisión de SWYN. Riesgo alto.'
+        : (earnFees ? 'Comisión del servicio: ' + pctTxt(earnFees.e) + ' al agregar y ' + pctTxt(earnFees.s) + ' al retirar.' : '');
+    });
   }
 
   // cuánto de B hace falta para un monto de A, según el precio actual del pool
@@ -9251,21 +9405,40 @@
     const sp = LIQ_SPACING[c.fee], lim = Math.floor(887272 / sp) * sp;
     liqEnviando = true; msg.textContent = 'Confirma en World App…';
     try{
-      if(!earnFees) await cargarEarnFees();
-      if(!earnFees) throw new Error('No se pudo leer la comisión. Intenta de nuevo.');
-      const p2 = new ethers.Interface(PERMIT2_APPROVE_ABI), ei = new ethers.Interface(EARN_ABI);
-      const neto0 = (amount0 * BigInt(10000 - earnFees.e)) / 10000n;
-      const neto1 = (amount1 * BigInt(10000 - earnFees.e)) / 10000n;
-      const args = {
-        token0: st.t0, token1: st.t1, fee: c.fee, monto0: amount0, monto1: amount1,
-        min0: (neto0 * 95n) / 100n, min1: (neto1 * 95n) / 100n,
-        deadline: Math.floor(Date.now() / 1000) + 1200
-      };
-      const transactions = [
-        { to: PERMIT2.toLowerCase(), data: p2.encodeFunctionData('approve', [st.t0, SWYN_EARN, amount0, 0]) },
-        { to: PERMIT2.toLowerCase(), data: p2.encodeFunctionData('approve', [st.t1, SWYN_EARN, amount1, 0]) },
-        { to: SWYN_EARN.toLowerCase(), data: ei.encodeFunctionData('agregarLiquidez', [args]) }
-      ];
+      let porContrato;
+      try{ porContrato = await liqPoolPermitido(c.pool); }catch(e){ throw new Error('No se pudo verificar el pool. Intenta de nuevo.'); }
+      let transactions;
+      if(porContrato){
+        if(!earnFees) await cargarEarnFees();
+        if(!earnFees) throw new Error('No se pudo leer la comisión. Intenta de nuevo.');
+        const p2 = new ethers.Interface(PERMIT2_APPROVE_ABI), ei = new ethers.Interface(EARN_ABI);
+        const neto0 = (amount0 * BigInt(10000 - earnFees.e)) / 10000n;
+        const neto1 = (amount1 * BigInt(10000 - earnFees.e)) / 10000n;
+        const args = {
+          token0: st.t0, token1: st.t1, fee: c.fee, monto0: amount0, monto1: amount1,
+          min0: (neto0 * 95n) / 100n, min1: (neto1 * 95n) / 100n,
+          deadline: Math.floor(Date.now() / 1000) + 1200
+        };
+        transactions = [
+          { to: PERMIT2.toLowerCase(), data: p2.encodeFunctionData('approve', [st.t0, SWYN_EARN, amount0, 0]) },
+          { to: PERMIT2.toLowerCase(), data: p2.encodeFunctionData('approve', [st.t1, SWYN_EARN, amount1, 0]) },
+          { to: SWYN_EARN.toLowerCase(), data: ei.encodeFunctionData('agregarLiquidez', [args]) }
+        ];
+      }else{
+        // pool no habilitado: directo a Uniswap, sin comisión de SWYN
+        const erc = new ethers.Interface(ERC20_ABI), npm = new ethers.Interface(LIQ_NPM_ABI);
+        const params = {
+          token0: st.t0, token1: st.t1, fee: c.fee, tickLower: -lim, tickUpper: lim,
+          amount0Desired: amount0, amount1Desired: amount1,
+          amount0Min: (amount0 * 95n) / 100n, amount1Min: (amount1 * 95n) / 100n,
+          recipient: userAddress, deadline: Math.floor(Date.now() / 1000) + 1200
+        };
+        transactions = [
+          { to: st.t0.toLowerCase(), data: erc.encodeFunctionData('approve', [LIQ_NPM, amount0]) },
+          { to: st.t1.toLowerCase(), data: erc.encodeFunctionData('approve', [LIQ_NPM, amount1]) },
+          { to: LIQ_NPM.toLowerCase(), data: npm.encodeFunctionData('mint', [params]) }
+        ];
+      }
       const res = await k.sendTransaction({ chainId: CHAIN_ID, transactions });
       const ok = (res && res.data && res.data.status === 'success') || (res && res.finalPayload && res.finalPayload.status !== 'error');
       if(ok){
@@ -9286,6 +9459,7 @@
     const cont = document.getElementById('liqPos');
     try{
       await cargarEarnFees();
+      await liqCargarUniverso();
       const npm = new ethers.Contract(LIQ_NPM, LIQ_NPM_ABI, prov);
       const n = Math.min(Number(await npm.balanceOf(userAddress)), 60);
       const ids = await Promise.all(Array.from({ length:n }, (_, i) => npm.tokenOfOwnerByIndex(userAddress, i)));
@@ -9356,16 +9530,30 @@
     liqEnviarTx([{ to: LIQ_NPM.toLowerCase(), data: npm.encodeFunctionData('collect', [{ tokenId:it.id, recipient:userAddress, amount0Max:LIQ_MAX128, amount1Max:LIQ_MAX128 }]) }], 'Comisiones cobradas');
   }
 
-  function liqRetirar(id){
+  async function liqRetirar(id){
     const it = liqPosEstado[id]; if(!it) return;
-    const npm = new ethers.Interface(LIQ_NPM_ABI);
     const deadline = Math.floor(Date.now() / 1000) + 1200;
-    const na = new ethers.Interface(NPM_APPROVE_ABI), ei = new ethers.Interface(EARN_ABI);
-    // 1) se autoriza el NFT al contrato solo para este retiro; 2) el contrato retira, cobra su comisión y te envía el resto
-    liqEnviarTx([
-      { to: LIQ_NPM.toLowerCase(), data: na.encodeFunctionData('approve', [SWYN_EARN, it.id]) },
-      { to: SWYN_EARN.toLowerCase(), data: ei.encodeFunctionData('retirarLiquidez', [it.id, (it.valor[0] * 95n) / 100n, (it.valor[1] * 95n) / 100n, deadline]) }
-    ], 'Retiro enviado');
+    let porContrato = false;
+    try{
+      const prov = await getReadProvider();
+      const pool = await new ethers.Contract(LIQ_FACTORY, LIQ_FACTORY_ABI, prov).getPool(it.pos.token0, it.pos.token1, Number(it.pos.fee));
+      porContrato = !!(await liqPoolPermitido(pool));
+    }catch(e){ showToast('No se pudo verificar el pool. Intenta de nuevo.', true); return; }
+    const min0 = (it.valor[0] * 95n) / 100n, min1 = (it.valor[1] * 95n) / 100n;
+    if(porContrato){
+      const na = new ethers.Interface(NPM_APPROVE_ABI), ei = new ethers.Interface(EARN_ABI);
+      // 1) se autoriza el NFT al contrato solo para este retiro; 2) el contrato retira, cobra su comisión y te envía el resto
+      liqEnviarTx([
+        { to: LIQ_NPM.toLowerCase(), data: na.encodeFunctionData('approve', [SWYN_EARN, it.id]) },
+        { to: SWYN_EARN.toLowerCase(), data: ei.encodeFunctionData('retirarLiquidez', [it.id, min0, min1, deadline]) }
+      ], 'Retiro enviado');
+    }else{
+      const npm = new ethers.Interface(LIQ_NPM_ABI);
+      liqEnviarTx([
+        { to: LIQ_NPM.toLowerCase(), data: npm.encodeFunctionData('decreaseLiquidity', [{ tokenId: it.id, liquidity: it.pos.liquidity, amount0Min: min0, amount1Min: min1, deadline }]) },
+        { to: LIQ_NPM.toLowerCase(), data: npm.encodeFunctionData('collect', [{ tokenId: it.id, recipient: userAddress, amount0Max: LIQ_MAX128, amount1Max: LIQ_MAX128 }]) }
+      ], 'Retiro enviado');
+    }
   }
 
   // ============================================================
