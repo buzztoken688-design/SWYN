@@ -1524,7 +1524,7 @@
       <div style="font-size:14px; font-weight:700; margin-bottom:6px;">Ganancias estimadas</div>
       <div style="display:flex; justify-content:space-between; font-size:14px; color:var(--text-dim);"><span>Al mes</span><span id="ganarEstMes">—</span></div>
       <div style="display:flex; justify-content:space-between; font-size:14px; color:var(--text-dim); margin-top:4px;"><span>Al año</span><span id="ganarEstAnio">—</span></div>
-      <div style="font-size:12px; color:var(--text-faint); margin-top:8px; line-height:1.4;">Estimación con el rendimiento actual; cambia con el tiempo y no está garantizada. Comisión de SWYN al depositar: <b id="ganarFee">…</b>, se descuenta de lo que guardas. Retirar no tiene comisión. Con tecnología de Morpho.</div>
+      <div style="font-size:12px; color:var(--text-faint); margin-top:8px; line-height:1.4;">Estimación con el rendimiento actual; cambia con el tiempo y no está garantizada. Comisión del servicio: <span id="ganarFee">…</span> al depositar. Con tecnología de Morpho.</div>
     </div>
     <div id="ganarModalMsg" style="font-size:13px; color:var(--text-dim); margin:12px 0; min-height:18px;"></div>
     <button class="btn" id="ganarModalBtn" onclick="ganarConfirmar()">Confirmar</button>
@@ -8849,22 +8849,50 @@
   let ganarAccion = null;     // { modo:'guardar'|'retirar', v }
   let ganarEnviando = false;
 
+  // texto corto con el motivo que devuelve World App cuando rechaza una transacción
+  function detalleError(res){
+    try{
+      const f = (res && (res.finalPayload || res.data)) || {};
+      const code = f.error_code || f.errorCode || '';
+      const det = f.details ? JSON.stringify(f.details) : '';
+      return [code, det].filter(Boolean).join(' · ').slice(0, 280);
+    }catch(e){ return ''; }
+  }
+
   function ganarFmt(raw, dec){
     const n = Number(ethers.formatUnits(raw, dec));
     return n.toLocaleString('es', { maximumFractionDigits: dec === 6 ? 2 : 4 });
   }
 
-  async function ganarApy(v){
+  async function ganarGql(v, campos){
     try{
-      const q = '{ vaultByAddress(address:"' + v.vault + '", chainId:480){ state{ netApy } } }';
+      const q = '{ vaultByAddress(address:"' + v.vault + '", chainId:480){ state{ ' + campos + ' } } }';
       const r = await Promise.race([
         fetch('https://api.morpho.org/graphql', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ query:q }) }),
         new Promise((_, rej)=>setTimeout(()=>rej(new Error('timeout')), 8000))
       ]);
       const j = await r.json();
-      const a = j && j.data && j.data.vaultByAddress && j.data.vaultByAddress.state && j.data.vaultByAddress.state.netApy;
-      return (typeof a === 'number') ? a * 100 : null;
+      return (j && j.data && j.data.vaultByAddress && j.data.vaultByAddress.state) || null;
     }catch(e){ return null; }
+  }
+
+  // devuelve { total, base, rew } en %; "total" incluye las recompensas de los programas de Morpho
+  async function ganarApy(v){
+    const [s1, s2] = await Promise.all([
+      ganarGql(v, 'netApy'),
+      ganarGql(v, 'netApy netApyExcludingRewards allRewards { supplyApr }')   // si algún campo no existe, solo se pierde el desglose
+    ]);
+    let total = (s1 && typeof s1.netApy === 'number') ? s1.netApy * 100 : null;
+    let base = null, rew = null;
+    if(s2){
+      if(typeof s2.netApyExcludingRewards === 'number') base = s2.netApyExcludingRewards * 100;
+      if(Array.isArray(s2.allRewards)) rew = s2.allRewards.reduce((a, x) => a + ((x && typeof x.supplyApr === 'number') ? x.supplyApr : 0), 0) * 100;
+      if(base !== null && rew !== null){
+        const suma = base + rew;
+        if(total === null || suma > total) total = suma;
+      }
+    }
+    return total === null ? null : { total, base, rew };
   }
 
   async function ganarCapital(vt){
@@ -8899,8 +8927,12 @@
     }));
     // el rendimiento llega aparte y no frena lo demás
     GANAR_VAULTS.forEach(async v => {
-      const apy = await ganarApy(v);
-      if(ganarEstado[v.id]){ ganarEstado[v.id].apy = apy; }
+      const r = await ganarApy(v);
+      if(ganarEstado[v.id]){
+        ganarEstado[v.id].apy = r ? r.total : null;
+        ganarEstado[v.id].apyBase = r ? r.base : null;
+        ganarEstado[v.id].apyRew = r ? r.rew : null;
+      }
       const el = document.getElementById('gv-' + v.id);
       if(el) el.outerHTML = ganarTarjeta(v, ganarEstado[v.id] || null);
     });
@@ -8910,7 +8942,9 @@
     const cargando = !st;
     const err = st && st.error;
     const pos = (!cargando && !err) ? ganarFmt(st.posicion, v.dec) + ' ' + v.simbolo : '—';
-    const apy = (st && typeof st.apy === 'number') ? st.apy.toFixed(2) + '% APY' : 'APY: ver en Morpho';
+    const hayRew = st && typeof st.apyRew === 'number' && st.apyRew > 0.005 && typeof st.apyBase === 'number';
+    const apy = (st && typeof st.apy === 'number') ? (hayRew ? 'Hasta ' : '') + st.apy.toFixed(2) + '% APY' : 'APY: ver en Morpho';
+    const detalleApy = hayRew ? ('Base ' + st.apyBase.toFixed(2) + '% + recompensas ' + st.apyRew.toFixed(2) + '%. Las recompensas se reclaman aparte en Morpho.') : '';
     const dis = (!cargando && !err) ? st.saldo === 0n : true;
     const tiene = (!cargando && !err) ? st.posicion > 0n : false;
     const hayG = (!cargando && !err) && st.ganancia > 10n ** BigInt(Math.max(v.dec - 6, 0));
@@ -8919,7 +8953,7 @@
       +   '<div style="font-size:17px; font-weight:700;">' + v.nombre + '</div>'
       +   '<div style="font-size:13px; color:var(--buzz); font-weight:700;">' + apy + '</div>'
       + '</div>'
-      + '<div style="font-size:13px; color:var(--text-faint); margin:4px 0 12px;">Token: ' + v.simbolo + ' · Curador: Re7 Labs<br>Rendimiento base para todos. Quienes estén verificados con World ID pueden recibir un bono extra de Morpho (no incluido aquí).</div>'
+      + '<div style="font-size:13px; color:var(--text-faint); margin:4px 0 12px;">Token: ' + v.simbolo + ' · Curador: Re7 Labs' + (detalleApy ? '<br>' + detalleApy : '') + '</div>'
       + '<div style="font-size:13px; color:var(--text-dim);">Tu depósito</div>'
       + '<div style="font-size:22px; font-weight:700; margin-bottom:' + (hayG ? '4' : '12') + 'px;">' + (cargando ? 'Cargando…' : (err ? 'No se pudo leer' : pos)) + '</div>'
       + (hayG ? '<div style="font-size:13px; color:var(--text-dim); margin-bottom:12px;">Ganancia acumulada: <b style="color:var(--up);">' + ganarFmt(st.ganancia, v.dec) + ' ' + v.simbolo + '</b></div>' : '')
@@ -9023,7 +9057,7 @@
         closeModal('ganarModal');
         setTimeout(cargarGanar, 2500);
       }else{
-        msg.textContent = 'No se completó. Intenta de nuevo con un monto menor.';
+        msg.textContent = 'No se completó. ' + detalleError(res);
       }
     }catch(e){
       msg.textContent = (e && e.message) ? e.message : 'Falló el envío';
@@ -9164,7 +9198,7 @@
     document.getElementById('liqTienes').textContent = 'Tienes: ' + liqFmt(st.ua, LIQ_TOK[c.a].dec) + ' ' + c.a + ' y ' + liqFmt(st.ub, LIQ_TOK[c.b].dec) + ' ' + c.b;
     document.getElementById('liqMsg').textContent = '';
     openModal('liqModal');
-    cargarEarnFees().then(() => { const el = document.getElementById('liqFeeTxt'); if(el) el.textContent = earnFees ? 'Comisión de SWYN: ' + pctTxt(earnFees.e) + ' al agregar (se descuenta de lo que aportas) y ' + pctTxt(earnFees.s) + ' al retirar. Cobrar tus comisiones del pool no tiene costo.' : ''; });
+    cargarEarnFees().then(() => { const el = document.getElementById('liqFeeTxt'); if(el) el.textContent = earnFees ? 'Comisión del servicio: ' + pctTxt(earnFees.e) + ' al agregar y ' + pctTxt(earnFees.s) + ' al retirar.' : ''; });
   }
 
   // cuánto de B hace falta para un monto de A, según el precio actual del pool
@@ -9239,7 +9273,7 @@
         closeModal('liqModal');
         setTimeout(cargarLiquidez, 3000);
       }else{
-        msg.textContent = 'No se completó. Intenta con un monto menor.';
+        msg.textContent = 'No se completó. ' + detalleError(res);
       }
     }catch(e){
       msg.textContent = (e && e.message) ? e.message : 'Falló el envío';
@@ -9295,7 +9329,7 @@
       <div style="font-size:15px; font-weight:600;">${liqFmt(valor[0], d0)} ${s0} + ${liqFmt(valor[1], d1)} ${s1}</div>
       <div style="font-size:13px; color:var(--text-dim); margin-top:8px;">Comisiones por cobrar</div>
       <div style="font-size:15px; font-weight:600;">${liqFmt(cobro[0], d0)} ${s0} + ${liqFmt(cobro[1], d1)} ${s1}</div>
-      <div style="font-size:12px; color:var(--text-faint); margin-top:10px;">${earnFees ? 'Al retirar todo se cobra ' + pctTxt(earnFees.s) + ' de comisión de SWYN.' : ''}</div>
+      <div style="font-size:12px; color:var(--text-faint); margin-top:10px;">${earnFees ? 'Comisión al retirar todo: ' + pctTxt(earnFees.s) + '.' : ''}</div>
       <div style="display:flex; gap:10px; margin-top:12px;">
         <button class="btn secondary" style="flex:1;" ${hayCobro ? '' : 'disabled'} onclick="liqCobrar('${id}')">Cobrar</button>
         <button class="btn secondary" style="flex:1;" ${pos.liquidity > 0n ? '' : 'disabled'} onclick="liqRetirar('${id}')">Retirar todo</button>
@@ -9311,7 +9345,7 @@
       const res = await k.sendTransaction({ chainId: CHAIN_ID, transactions });
       const ok = (res && res.data && res.data.status === 'success') || (res && res.finalPayload && res.finalPayload.status !== 'error');
       if(ok){ showToast(okMsg); setTimeout(cargarLiquidez, 3000); }
-      else showToast('No se completó', true);
+      else showToast('No se completó. ' + detalleError(res), true);
     }catch(e){ showToast((e && e.message) ? e.message : 'Falló el envío', true); }
     finally{ liqEnviando = false; }
   }
