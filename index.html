@@ -1311,30 +1311,17 @@
 
     <section class="screen" id="screen-ganar">
       <div class="section-title">Ganar</div>
-      <div class="card" style="margin-bottom:14px;">
-        <div style="font-size:13px; color:var(--text-dim); line-height:1.5;">
-          Guarda tus tokens en vaults de <b>Morpho</b>, un protocolo de préstamos en World Chain. Tus fondos quedan en <b>tu propia wallet</b> (SWYN no los custodia) y puedes retirarlos cuando quieras. El rendimiento es <b>variable y no está garantizado</b>; parte puede venir de recompensas temporales. Existe riesgo en los contratos de Morpho y del curador del vault.
-        </div>
-      </div>
-      <div class="sec-h" style="margin:6px 0 10px;">Guardar</div>
+
+      <div class="sec-h" style="margin:6px 0 4px;">Guardar</div>
+      <div style="font-size:12px; color:var(--text-faint); margin-bottom:10px;">Rendimiento variable, no garantizado.</div>
       <div id="ganarList"><div class="empty-state">Cargando…</div></div>
 
-      <div class="sec-h" style="margin:26px 0 10px;">Liquidez</div>
-      <div class="card" style="margin-bottom:14px;">
-        <div style="font-size:13px; color:var(--text-dim); line-height:1.5;">
-          Aporta tokens a <b>pools de Uniswap</b> ya existentes en World Chain y gana una parte de las <b>comisiones de cada swap</b>. Solo se muestran pools verificados. Tu posición es un NFT que queda en <b>tu wallet</b>. Riesgos: si los precios de los dos tokens se mueven distinto puedes quedar con menos valor que si los hubieras guardado (<b>pérdida impermanente</b>), y las ganancias dependen del volumen del pool: <b>no están garantizadas</b>.
-        </div>
-      </div>
-      <div id="liqPools"><div class="empty-state">Cargando…</div></div>
-      <div class="sec-h" style="margin:22px 0 10px;">Buscar otro pool</div>
-      <div class="card" style="margin-bottom:12px;">
-        <div style="font-size:13px; color:var(--text-dim); line-height:1.5; margin-bottom:10px;">
-          Busca un token por nombre, símbolo o dirección. Solo aparecen tokens de la lista de SWYN y pools reales de Uniswap (de la factory oficial) con dinero adentro.
-        </div>
-        <input class="field" id="liqBuscaInp" placeholder="Ej. FutureX, ZORP o 0x…" oninput="liqBuscarInput(this.value)" autocomplete="off">
-        <div id="liqBuscaTok" style="margin-top:10px; display:flex; flex-wrap:wrap; gap:8px;"></div>
-      </div>
+      <div class="sec-h" style="margin:26px 0 4px;">Liquidez</div>
+      <div style="font-size:12px; color:var(--text-faint); margin-bottom:10px;">Las ganancias dependen del volumen del pool y no están garantizadas.</div>
+      <input class="field" id="liqBuscaInp" placeholder="Pega la dirección del token (0x…)" oninput="liqBuscarInput(this.value)" autocomplete="off">
+      <div id="liqBuscaTok" style="margin:10px 0; display:flex; flex-wrap:wrap; gap:8px;"></div>
       <div id="liqBuscaRes"></div>
+      <div id="liqPools" style="margin-top:12px;"><div class="empty-state">Cargando…</div></div>
 
       <div class="sec-h" style="margin:22px 0 10px;">Tus posiciones</div>
       <div id="liqPos"><div class="empty-state">—</div></div>
@@ -8948,32 +8935,36 @@
     });
   }
 
+  // % aproximado EXTRA para quienes están verificados con World ID (promoción de World/Morpho, solo
+  // en los primeros 1.000 WLD / 1.000 USDC). Es la diferencia entre el "Hasta" que muestra la app
+  // de Morpho y el rendimiento que entrega su API. Ajustar si cambia la promoción.
+  const GANAR_BONO_VERIFICADO = { wld: 6.86, usdc: 6.78 };
+
   function ganarTarjeta(v, st){
     const cargando = !st;
     const err = st && st.error;
     const pos = (!cargando && !err) ? ganarFmt(st.posicion, v.dec) + ' ' + v.simbolo : '—';
-    const hayRew = st && typeof st.apyRew === 'number' && st.apyRew > 0.005 && typeof st.apyBase === 'number';
-    const apy = (st && typeof st.apy === 'number') ? (hayRew ? 'Hasta ' : '') + st.apy.toFixed(2) + '% APY' : 'APY: ver en Morpho';
-    const detalleApy = hayRew ? ('Base ' + st.apyBase.toFixed(2) + '% + recompensas ' + st.apyRew.toFixed(2) + '%. Las recompensas se reclaman aparte en Morpho.') : '';
+    const apy = (st && typeof st.apy === 'number') ? st.apy.toFixed(2) + '% APY' : '';
+    const bono = (st && typeof st.apy === 'number' && GANAR_BONO_VERIFICADO[v.id] != null)
+      ? 'Verificado con World ID: hasta ~' + (st.apy + GANAR_BONO_VERIFICADO[v.id]).toFixed(1) + '% (primeros 1.000 ' + v.simbolo + ')' : '';
     const dis = (!cargando && !err) ? st.saldo === 0n : true;
     const tiene = (!cargando && !err) ? st.posicion > 0n : false;
     const hayG = (!cargando && !err) && st.ganancia > 10n ** BigInt(Math.max(v.dec - 6, 0));
-    return '<div class="card" id="gv-' + v.id + '" style="margin-bottom:12px;">'
-      + '<div style="display:flex; justify-content:space-between; align-items:baseline;">'
-      +   '<div style="font-size:17px; font-weight:700;">' + v.nombre + '</div>'
-      +   '<div style="font-size:13px; color:var(--buzz); font-weight:700;">' + apy + '</div>'
-      + '</div>'
-      + '<div style="font-size:13px; color:var(--text-faint); margin:4px 0 12px;">Token: ' + v.simbolo + ' · Curador: Re7 Labs' + (detalleApy ? '<br>' + detalleApy : '') + '</div>'
-      + '<div style="font-size:13px; color:var(--text-dim);">Tu depósito</div>'
-      + '<div style="font-size:22px; font-weight:700; margin-bottom:' + (hayG ? '4' : '12') + 'px;">' + (cargando ? 'Cargando…' : (err ? 'No se pudo leer' : pos)) + '</div>'
-      + (hayG ? '<div style="font-size:13px; color:var(--text-dim); margin-bottom:12px;">Ganancia acumulada: <b style="color:var(--up);">' + ganarFmt(st.ganancia, v.dec) + ' ' + v.simbolo + '</b></div>' : '')
-      + '<div style="display:flex; gap:10px;">'
-      +   '<button class="btn" style="flex:1;" ' + (dis ? 'disabled' : '') + ' onclick="ganarAbrir(\'guardar\',\'' + v.id + '\')">Guardar</button>'
-      +   '<button class="btn secondary" style="flex:1;" ' + (tiene ? '' : 'disabled') + ' onclick="ganarAbrir(\'retirar\',\'' + v.id + '\')">Retirar</button>'
-      + '</div>'
-      + (hayG ? '<button class="btn secondary" style="width:100%; margin-top:10px;" onclick="ganarAbrirGanancia(\'' + v.id + '\')">Retirar ganancia</button>' : '')
-      + '<a href="https://worldscan.org/address/' + v.vault + '" target="_blank" style="display:block; margin-top:10px; font-size:12px; color:var(--text-faint);">Ver contrato en Worldscan</a>'
-      + '</div>';
+    return `<div class="card" id="gv-${v.id}" style="margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:baseline;">
+        <div style="font-size:17px; font-weight:700;">${v.nombre}</div>
+        <div style="font-size:14px; color:var(--buzz); font-weight:700;">${apy}</div>
+      </div>
+      ${bono ? `<div style="font-size:12px; color:var(--text-faint); margin-top:2px; text-align:right;">${bono}</div>` : ''}
+      <div style="font-size:12px; color:var(--text-dim); margin-top:12px;">Tu depósito</div>
+      <div style="font-size:22px; font-weight:700; margin-bottom:${hayG ? '4' : '12'}px;">${cargando ? 'Cargando…' : (err ? 'No se pudo leer' : pos)}</div>
+      ${hayG ? `<div style="font-size:13px; color:var(--text-dim); margin-bottom:12px;">Ganancia: <b style="color:var(--up);">${ganarFmt(st.ganancia, v.dec)} ${v.simbolo}</b></div>` : ''}
+      <div style="display:flex; gap:10px;">
+        <button class="btn" style="flex:1;" ${dis ? 'disabled' : ''} onclick="ganarAbrir('guardar','${v.id}')">Guardar</button>
+        <button class="btn secondary" style="flex:1;" ${tiene ? '' : 'disabled'} onclick="ganarAbrir('retirar','${v.id}')">Retirar</button>
+      </div>
+      ${hayG ? `<button class="btn secondary" style="width:100%; margin-top:10px;" onclick="ganarAbrirGanancia('${v.id}')">Retirar ganancia</button>` : ''}
+    </div>`;
   }
 
   function ganarAbrir(modo, id){
@@ -9317,18 +9308,15 @@
 
   function liqTarjeta(c, st){
     const cargando = !st, ok = st && st.ok;
-    const info = cargando ? 'Verificando…' : (ok
-      ? 'En el pool: ' + liqFmt(st.pa, LIQ_TOK[c.a].dec) + ' ' + c.a + ' + ' + liqFmt(st.pb, LIQ_TOK[c.b].dec) + ' ' + c.b
-      : 'No disponible ahora');
+    const sin = c.dyn && !c.habilitado;
+    const estado = cargando ? 'Verificando…' : (!ok ? 'No disponible ahora' : (sin ? '⚠ Sin verificar · riesgo alto' : '✓ Verificado'));
     return `<div class="card" id="lp-${c.id}" style="margin-bottom:12px;">
       <div style="display:flex; justify-content:space-between; align-items:baseline;">
         <div style="font-size:17px; font-weight:700;">${c.a} / ${c.b}</div>
-        <div style="font-size:13px; color:var(--buzz); font-weight:700;">Comisión ${c.fee / 10000}%</div>
+        <div style="font-size:13px; color:var(--buzz); font-weight:700;">${c.fee / 10000}%</div>
       </div>
-      <div style="font-size:13px; color:var(--text-faint); margin:4px 0 12px;">${info}</div>
+      <div style="font-size:12px; margin:4px 0 12px; color:${sin ? '#b45309' : 'var(--text-faint)'};">${estado}</div>
       <button class="btn" ${ok ? '' : 'disabled'} onclick="liqAbrir('${c.id}')">Agregar liquidez</button>
-      <div style="font-size:12px; margin-top:10px; color:${(c.dyn && !c.habilitado) ? '#b45309' : 'var(--text-faint)'};">${(c.dyn && !c.habilitado) ? '⚠ Pool real de Uniswap, pero no verificado por SWYN. Riesgo alto: revisa el token antes de poner liquidez.' : '✓ Pool verificado en la factory de Uniswap'}</div>
-      <a href="https://worldscan.org/address/${c.pool}" target="_blank" style="display:block; margin-top:6px; font-size:12px; color:var(--text-faint);">Ver pool en Worldscan</a>
     </div>`;
   }
 
