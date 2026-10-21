@@ -1315,6 +1315,11 @@
       <div class="sec-h" style="margin:6px 0 4px;">Guardar</div>
       <div style="font-size:12px; color:var(--text-faint); margin-bottom:10px;">Rendimiento variable, no garantizado.</div>
       <div id="ganarList"><div class="empty-state">Cargando…</div></div>
+      <div class="card" id="recCard" style="margin-bottom:12px;">
+        <div style="font-size:12px; color:var(--text-dim);">Recompensas por reclamar</div>
+        <div style="font-size:20px; font-weight:700; margin:4px 0 12px;" id="recMonto">—</div>
+        <button class="btn" id="recBtn" disabled onclick="recReclamar()">Reclamar</button>
+      </div>
 
       <div class="sec-h" style="margin:26px 0 4px;">Liquidez</div>
       <div style="font-size:12px; color:var(--text-faint); margin-bottom:10px;">Las ganancias dependen del volumen del pool y no están garantizadas.</div>
@@ -1958,7 +1963,7 @@
     if(name === 'tendencias' || name === 'swap') loadTrending();
     if(name === 'tendencias'){ renderLpStrip(); cargarLanzados(); }
     if(name === 'perfil'){ cargarPerfil(); vigilarSecciones(); }
-    if(name === 'ganar'){ cargarGanar(); cargarLiquidez(); }
+    if(name === 'ganar'){ cargarGanar(); cargarLiquidez(); cargarRecompensas(); }
     if(name === 'crear') initCrear();
     if(name === 'anunciar') initAnunciar();
     if(name === 'lanzados'){
@@ -9542,6 +9547,65 @@
         { to: LIQ_NPM.toLowerCase(), data: npm.encodeFunctionData('collect', [{ tokenId: it.id, recipient: userAddress, amount0Max: LIQ_MAX128, amount1Max: LIQ_MAX128 }]) }
       ], 'Retiro enviado');
     }
+  }
+
+
+  // ============================================================
+  //  RECOMPENSAS — se reclaman directo de Merkl (el distribuidor oficial de Morpho)
+  //  El usuario las cobra desde su propia wallet; SWYN no toca ni cobra nada aquí.
+  // ============================================================
+  const MERKL_DISTRIBUTOR = '0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae';
+  const MERKL_ABI = ['function claim(address[] users, address[] tokens, uint256[] amounts, bytes32[][] proofs)'];
+  let recPend = null;
+  let recEnviando = false;
+
+  // solo se reclaman tokens conocidos (WLD, USDC, WETH, WBTC): los datos vienen de una API externa
+  function recTokenOk(a){
+    const x = String(a || '').toLowerCase();
+    return ['WLD', 'USDC', 'WETH', 'WBTC'].some(k => LIQ_TOK[k].a.toLowerCase() === x);
+  }
+
+  async function cargarRecompensas(){
+    const m = document.getElementById('recMonto'), b = document.getElementById('recBtn');
+    if(!m || !b) return;
+    if(!userAddress){ m.textContent = '—'; b.disabled = true; recPend = null; return; }
+    try{
+      const r = await Promise.race([
+        fetch('https://api.merkl.xyz/v4/users/' + userAddress.toLowerCase() + '/rewards?chainId=' + CHAIN_ID),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))
+      ]);
+      if(!r.ok) throw new Error('merkl ' + r.status);
+      const data = await r.json();
+      const lista = (Array.isArray(data) ? data : []).flatMap(e => (e && e.rewards) || []);
+      const ok = lista.filter(x => x && x.token && Array.isArray(x.proofs) && x.proofs.length > 0
+        && recTokenOk(x.token.address) && BigInt(x.amount || '0') > BigInt(x.claimed || '0'));
+      recPend = ok.map(x => ({
+        token: x.token.address, symbol: x.token.symbol, dec: Number(x.token.decimals),
+        amount: BigInt(x.amount), claimed: BigInt(x.claimed || '0'), proofs: x.proofs
+      }));
+      if(!recPend.length){ m.textContent = 'Nada por reclamar'; b.disabled = true; return; }
+      m.textContent = recPend.map(x => ganarFmt(x.amount - x.claimed, x.dec) + ' ' + x.symbol).join(' + ');
+      b.disabled = false;
+    }catch(e){ recPend = null; m.textContent = 'No se pudo leer'; b.disabled = true; }
+  }
+
+  async function recReclamar(){
+    if(recEnviando) return;
+    recEnviando = true;
+    try{
+      await cargarRecompensas();   // las pruebas de Merkl caducan en pocas horas: se piden de nuevo justo antes
+      if(!recPend || !recPend.length){ showToast('No hay recompensas por reclamar', true); return; }
+      const k = window._MiniKit || window.MiniKit;
+      if(!k || !(k.isInstalled && k.isInstalled())){ showToast('Abre SWYN desde World App', true); return; }
+      const data = new ethers.Interface(MERKL_ABI).encodeFunctionData('claim', [
+        recPend.map(() => userAddress), recPend.map(x => x.token), recPend.map(x => x.amount), recPend.map(x => x.proofs)
+      ]);
+      const res = await k.sendTransaction({ chainId: CHAIN_ID, transactions: [{ to: MERKL_DISTRIBUTOR.toLowerCase(), data }] });
+      const ok = (res && res.data && res.data.status === 'success') || (res && res.finalPayload && res.finalPayload.status !== 'error');
+      if(ok){ showToast('Recompensas reclamadas'); setTimeout(cargarRecompensas, 4000); }
+      else showToast('No se completó. ' + detalleError(res), true);
+    }catch(e){ showToast((e && e.message) ? e.message : 'Falló el envío', true); }
+    finally{ recEnviando = false; }
   }
 
   // ============================================================
